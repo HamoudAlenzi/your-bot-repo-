@@ -3,9 +3,13 @@
 // Replace EVERYTHING in bot.js with this
 // =============================================
 
+// =============================================
+// ACC STORE BOT — Complete File
+// =============================================
+
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
+const path = require('path');
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Partials } = require('discord.js');
 
 // ===== EXPRESS SERVER (Panel Backend) =====
