@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Acc Store — Control Center</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root{
+  --bg-deep:#1e1f22;--bg:#2b2d31;--bg-chat:#313338;--bg-card:#383a40;--bg-input:#1e1f22;
+  --bg-hover:#404249;--border:#3f4147;--border-light:#4e5058;
+  --fg:#f2f3f5;--fg-muted:#949ba4;--fg-dim:#6d6f78;
+  --accent:#5865f2;--accent-dim:rgba(88,101,242,.15);--accent-hover:#4752c4;
+  --green:#23a55a;--green-dim:rgba(35,165,90,.15);
+  --red:#da373c;--red-dim:rgba(218,55,60,.15);
+  --yellow:#f0b232;--yellow-dim:rgba(240,178,50,.15);
+  --radius:8px;--radius-sm:4px;
+  --shadow:0 8px 24px rgba(0,0,0,.4);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Cairo',sans-serif;background:var(--bg-deep);color:var(--fg);min-height:100vh;overflow-x:hidden}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--border-light)}
+
+.app{display:flex;height:100vh;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:240px;background:var(--bg);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.brand{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.brand-logo{width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#7289da);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:18px}
+.brand-name{font-weight:700;font-size:15px;line-height:1.2}
+.brand-sub{font-size:11px;color:var(--fg-muted)}
+.nav{flex:1;overflow-y:auto;padding:10px 8px}
+.nav-section{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--fg-dim);padding:14px 10px 6px;font-weight:700}
+.nav-item{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:6px;color:var(--fg-muted);cursor:pointer;transition:.15s;font-size:14px;font-weight:500;margin-bottom:2px}
+.nav-item:hover{background:var(--bg-hover);color:var(--fg)}
+.nav-item.active{background:var(--accent-dim);color:#fff}
+.nav-item i{width:18px;text-align:center;font-size:14px}
+.nav-badge{margin-left:auto;background:var(--red);color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;font-weight:700}
+.nav-badge.green{background:var(--green)}
+.nav-badge.yellow{background:var(--yellow);color:#000}
+.sidebar-footer{padding:12px;border-top:1px solid var(--border);font-size:12px;color:var(--fg-dim);display:flex;align-items:center;gap:8px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.status-dot.offline{background:var(--red)}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{height:56px;border-bottom:1px solid var(--border);background:var(--bg);display:flex;align-items:center;padding:0 24px;gap:16px;flex-shrink:0}
+.topbar h1{font-size:16px;font-weight:600}
+.topbar .spacer{flex:1}
+.topbar .live-time{font-family:'JetBrains Mono';font-size:12px;color:var(--fg-muted)}
+.content{flex:1;overflow-y:auto;padding:24px}
+.page{display:none}
+.page.active{display:block}
+
+/* CARDS / GRID */
+.grid{display:grid;gap:16px}
+.grid-4{grid-template-columns:repeat(4,1fr)}
+.grid-3{grid-template-columns:repeat(3,1fr)}
+.grid-2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:1100px){.grid-4{grid-template-columns:repeat(2,1fr)}.grid-3{grid-template-columns:1fr}}
+@media(max-width:700px){.grid-4,.grid-3,.grid-2{grid-template-columns:1fr}}
+
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+.card-title{font-size:13px;color:var(--fg-muted);margin-bottom:8px;display:flex;align-items:center;gap:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.stat-card{display:flex;align-items:center;gap:14px}
+.stat-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.stat-icon.blue{background:var(--accent-dim);color:var(--accent)}
+.stat-icon.green{background:var(--green-dim);color:var(--green)}
+.stat-icon.red{background:var(--red-dim);color:var(--red)}
+.stat-icon.yellow{background:var(--yellow-dim);color:var(--yellow)}
+.stat-value{font-size:24px;font-weight:700;line-height:1}
+.stat-label{font-size:12px;color:var(--fg-muted);margin-top:2px}
+
+/* BUTTONS */
+.btn{padding:8px 16px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{background:var(--accent-hover)}
+.btn.secondary{background:var(--bg-hover);color:var(--fg)}
+.btn.secondary:hover{background:var(--border-light)}
+.btn.danger{background:var(--red)}
+.btn.success{background:var(--green)}
+.btn.warn{background:var(--yellow);color:#000}
+.btn.sm{padding:5px 10px;font-size:12px}
+.btn.lg{padding:10px 20px;font-size:14px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* FORMS */
+.form-group{margin-bottom:14px}
+.form-label{display:block;font-size:12px;color:var(--fg-muted);margin-bottom:5px;font-weight:600}
+.form-input,.form-select,.form-textarea{width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:13px;transition:.15s}
+.form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--accent);background:var(--bg-deep)}
+.form-textarea{resize:vertical;min-height:70px;font-family:'Cairo',sans-serif}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.form-hint{font-size:11px;color:var(--fg-dim);margin-top:4px}
+
+/* IMAGE UPLOADER */
+.image-uploader{border:2px dashed var(--border-light);border-radius:var(--radius);padding:20px;text-align:center;cursor:pointer;transition:.15s;background:var(--bg-input)}
+.image-uploader:hover{border-color:var(--accent);background:var(--accent-dim)}
+.image-uploader i{font-size:32px;color:var(--fg-muted);margin-bottom:8px}
+.image-uploader p{font-size:13px;color:var(--fg-muted)}
+.image-preview-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:12px}
+.image-preview{position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;border:1px solid var(--border)}
+.image-preview img{width:100%;height:100%;object-fit:cover}
+.image-preview .remove{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px}
+.image-preview .main-badge{position:absolute;bottom:4px;left:4px;background:var(--green);color:#fff;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700}
+
+/* TABLE */
+.table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{background:var(--bg-hover)}
+th{text-align:left;padding:11px 14px;font-weight:600;color:var(--fg-muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover{background:var(--bg-hover)}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge.green{background:var(--green-dim);color:var(--green)}
+.badge.red{background:var(--red-dim);color:var(--red)}
+.badge.yellow{background:var(--yellow-dim);color:var(--yellow)}
+.badge.blue{background:var(--accent-dim);color:var(--accent)}
+.badge.gray{background:rgba(255,255,255,.06);color:var(--fg-muted)}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px}
+.modal-overlay.active{display:flex}
+.modal{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);width:100%;max-width:680px;max-height:90vh;overflow-y:auto}
+.modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:between}
+.modal-header h2{font-size:16px;flex:1}
+.modal-close{background:none;border:none;color:var(--fg-muted);font-size:18px;cursor:pointer;padding:4px 8px}
+.modal-body{padding:20px}
+.modal-footer{padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+
+/* PRODUCT CARD */
+.product-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:.15s}
+.product-card:hover{border-color:var(--accent)}
+.product-img{aspect-ratio:16/9;background:var(--bg-deep);overflow:hidden;position:relative}
+.product-img img{width:100%;height:100%;object-fit:cover}
+.product-img-count{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.7);color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;display:flex;align-items:center;gap:4px}
+.product-body{padding:12px}
+.product-title{font-weight:600;font-size:14px;margin-bottom:4px;line-height:1.3}
+.product-meta{font-size:11px;color:var(--fg-muted);margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap}
+.product-price{font-size:18px;font-weight:700;color:var(--green)}
+.product-actions{display:flex;gap:6px;margin-top:10px}
+
+/* TICKET CARD */
+.ticket-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;align-items:center;gap:14px}
+.ticket-avatar{width:42px;height:42px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:16px;flex-shrink:0}
+.ticket-info{flex:1;min-width:0}
+.ticket-id{font-size:11px;color:var(--fg-muted);font-family:'JetBrains Mono'}
+.ticket-user{font-weight:600;font-size:14px;margin:2px 0}
+.ticket-product{font-size:12px;color:var(--fg-muted)}
+.ticket-actions{display:flex;gap:6px;flex-direction:column}
+
+/* LOGS */
+.log-entry{display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-family:'JetBrains Mono';font-size:12px}
+.log-time{color:var(--fg-dim);flex-shrink:0;width:80px}
+.log-level{flex-shrink:0;width:50px;font-weight:700}
+.log-level.INFO{color:var(--accent)}
+.log-level.WARN{color:var(--yellow)}
+.log-level.ERROR{color:var(--red)}
+.log-msg{color:var(--fg);flex:1;word-break:break-word}
+
+/* TOAST */
+.toast-container{position:fixed;top:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 18px;border-radius:8px;background:var(--bg-card);border:1px solid var(--border);box-shadow:var(--shadow);min-width:240px;display:flex;align-items:center;gap:10px;font-size:13px;animation:slideIn .3s ease}
+.toast.success{border-left:3px solid var(--green)}
+.toast.error{border-left:3px solid var(--red)}
+.toast.info{border-left:3px solid var(--accent)}
+@keyframes slideIn{from{transform:translateX(120%)}to{transform:translateX(0)}}
+
+/* PAGE HEADER */
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.page-header h2{font-size:20px;font-weight:700}
+.page-header .actions{display:flex;gap:8px}
+
+/* SEARCH */
+.search-bar{position:relative;flex:1;max-width:300px}
+.search-bar input{width:100%;padding:8px 12px 8px 34px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:13px}
+.search-bar i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--fg-muted);font-size:12px}
+
+.empty-state{text-align:center;padding:60px 20px;color:var(--fg-muted)}
+.empty-state i{font-size:48px;margin-bottom:12px;opacity:.4}
+.empty-state p{font-size:14px}
+
+.filter-row{display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+.filter-row select{padding:7px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-size:12px}
+
+.receipt-thumb{max-width:120px;max-height:90px;border-radius:4px;cursor:pointer;border:1px solid var(--border)}
+.divider{height:1px;background:var(--border);margin:14px 0}
+.kv{display:flex;justify-content:space-between;padding:4px 0;font-size:13px}
+.kv .k{color:var(--fg-muted)}
+.kv .v{font-weight:600}
+
+.image-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center;z-index:3000;cursor:zoom-out;padding:40px}
+.image-lightbox.active{display:flex}
+.image-lightbox img{max-width:100%;max-height:100%;border-radius:8px}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">A</div>
+      <div>
+        <div class="brand-name">Acc Store</div>
+        <div class="brand-sub">Control Center v2</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <div class="nav-section">Main</div>
+      <div class="nav-item active" data-page="dashboard"><i class="fa-solid fa-gauge"></i> Dashboard</div>
+      <div class="nav-item" data-page="products"><i class="fa-solid fa-box"></i> Products <span class="nav-badge yellow" id="nav-products-count">0</span></div>
+      <div class="nav-item" data-page="tickets"><i class="fa-solid fa-ticket"></i> Tickets <span class="nav-badge" id="nav-tickets-count" style="display:none">0</span></div>
+      <div class="nav-item" data-page="payments"><i class="fa-solid fa-money-bill-wave"></i> Payments <span class="nav-badge" id="nav-payments-count" style="display:none">0</span></div>
+      <div class="nav-section">Sales</div>
+      <div class="nav-item" data-page="orders"><i class="fa-solid fa-receipt"></i> Orders</div>
+      <div class="nav-item" data-page="customers"><i class="fa-solid fa-users"></i> Customers</div>
+      <div class="nav-item" data-page="pools"><i class="fa-solid fa-layer-group"></i> Pools</div>
+      <div class="nav-section">System</div>
+      <div class="nav-item" data-page="settings"><i class="fa-solid fa-gear"></i> Settings</div>
+      <div class="nav-item" data-page="logs"><i class="fa-solid fa-list"></i> Logs</div>
+    </nav>
+    <div class="sidebar-footer">
+      <span class="status-dot" id="bot-status-dot"></span>
+      <span id="bot-status-text">Connecting...</span>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <h1 id="page-title">Dashboard</h1>
+      <div class="spacer"></div>
+      <span class="live-time" id="live-time">--:--:--</span>
+      <button class="btn secondary sm" onclick="refreshAll()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+    </div>
+
+    <div class="content">
+      <!-- DASHBOARD -->
+      <div class="page active" id="page-dashboard">
+        <div class="grid grid-4" style="margin-bottom:20px">
+          <div class="card stat-card">
+            <div class="stat-icon blue"><i class="fa-solid fa-box"></i></div>
+            <div><div class="stat-value" id="stat-total-accounts">0</div><div class="stat-label">Total Products</div></div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-icon green"><i class="fa-solid fa-check-circle"></i></div>
+            <div><div class="stat-value" id="stat-available">0</div><div class="stat-label">Available</div></div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-icon yellow"><i class="fa-solid fa-ticket"></i></div>
+            <div><div class="stat-value" id="stat-open-tickets">0</div><div class="stat-label">Open Tickets</div></div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-icon green"><i class="fa-solid fa-dollar-sign"></i></div>
+            <div><div class="stat-value" id="stat-revenue">0</div><div class="stat-label">Revenue</div></div>
+          </div>
+        </div>
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-title"><i class="fa-solid fa-clock-rotate-left"></i> Recent Activity</div>
+            <div id="dash-recent-logs" style="max-height:280px;overflow-y:auto"></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><i class="fa-solid fa-bolt"></i> Quick Actions</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+              <button class="btn" onclick="showPage('products');openProductModal()"><i class="fa-solid fa-plus"></i> Add New Product</button>
+              <button class="btn secondary" onclick="showPage('products');openBulkModal()"><i class="fa-solid fa-layer-group"></i> Bulk Import</button>
+              <button class="btn secondary" onclick="showPage('payments')"><i class="fa-solid fa-money-bill"></i> Review Payments</button>
+              <button class="btn secondary" onclick="showPage('tickets')"><i class="fa-solid fa-ticket"></i> View Open Tickets</button>
+              <button class="btn secondary" onclick="showPage('settings')"><i class="fa-solid fa-gear"></i> Bot Settings</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PRODUCTS -->
+      <div class="page" id="page-products">
+        <div class="page-header">
+          <h2>Products</h2>
+          <div class="actions">
+            <button class="btn secondary" onclick="openBulkModal()"><i class="fa-solid fa-layer-group"></i> Bulk Import</button>
+            <button class="btn" onclick="openProductModal()"><i class="fa-solid fa-plus"></i> Add Product</button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <div class="search-bar"><i class="fa-solid fa-search"></i><input id="prod-search" placeholder="Search products..." oninput="loadProducts()"></div>
+          <select id="prod-filter-game" onchange="loadProducts()"><option value="">All Games</option><option>PUBG</option><option>Fortnite</option><option>Call of Duty</option><option>Valorant</option><option>Genshin</option><option>Clash Royale</option><option>Other</option></select>
+          <select id="prod-filter-status" onchange="loadProducts()"><option value="">All Status</option><option value="available">Available</option><option value="sold">Sold</option><option value="dead">Dead</option></select>
+        </div>
+        <div class="grid grid-3" id="products-grid"></div>
+      </div>
+
+      <!-- TICKETS -->
+      <div class="page" id="page-tickets">
+        <div class="page-header">
+          <h2>Active Tickets</h2>
+          <div class="actions">
+            <button class="btn secondary" onclick="loadTickets()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <select id="ticket-filter" onchange="loadTickets()">
+            <option value="open">Open Only</option>
+            <option value="closed">Closed Only</option>
+            <option value="">All</option>
+          </select>
+        </div>
+        <div id="tickets-list" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
+
+      <!-- PAYMENTS -->
+      <div class="page" id="page-payments">
+        <div class="page-header"><h2>Payment Requests</h2></div>
+        <div class="filter-row">
+          <select id="pay-filter" onchange="loadPayments()">
+            <option value="Pending">Pending (Awaiting Receipt)</option>
+            <option value="Waiting Review">Waiting Review</option>
+            <option value="">All</option>
+            <option value="Approved">Approved</option>
+            <option value="Rejected">Rejected</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Customer</th><th>Product</th><th>Amount</th><th>Method</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+            <tbody id="payments-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ORDERS -->
+      <div class="page" id="page-orders">
+        <div class="page-header"><h2>Orders</h2></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Order ID</th><th>Customer</th><th>Product</th><th>Amount</th><th>Method</th><th>Status</th><th>Date</th><th>Credentials</th></tr></thead>
+            <tbody id="orders-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- CUSTOMERS -->
+      <div class="page" id="page-customers">
+        <div class="page-header"><h2>Customers</h2></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Discord ID</th><th>Purchases</th><th>Total Spent</th><th>Trust</th><th>Joined</th><th>Actions</th></tr></thead>
+            <tbody id="customers-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- POOLS -->
+      <div class="page" id="page-pools">
+        <div class="page-header">
+          <h2>Account Pools</h2>
+          <button class="btn" onclick="openPoolModal()"><i class="fa-solid fa-plus"></i> New Pool</button>
+        </div>
+        <div id="pools-list" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="page" id="page-settings">
+        <div class="page-header"><h2>Bot Settings</h2></div>
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-title"><i class="fa-solid fa-robot"></i> Bot Configuration</div>
+            <div class="form-group">
+              <label class="form-label">Store Name</label>
+              <input class="form-input" id="set-store-name" placeholder="Acc Store">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Currency Symbol</label>
+                <input class="form-input" id="set-currency" placeholder="$">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Auto-Close Delay (seconds)</label>
+                <input class="form-input" type="number" id="set-close-delay" placeholder="10">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Admin Discord User IDs (comma-separated)</label>
+              <input class="form-input" id="set-admin-ids" placeholder="123456789,987654321">
+              <div class="form-hint">These users can approve/reject payments and manage tickets.</div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Admin Role ID</label>
+                <select class="form-select" id="set-admin-role"></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Ticket Category</label>
+                <select class="form-select" id="set-ticket-category"></select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Products Channel</label>
+                <select class="form-select" id="set-accounts-channel"></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Log Channel</label>
+                <select class="form-select" id="set-log-channel"></select>
+              </div>
+            </div>
+            <button class="btn secondary sm" onclick="fetchGuildData()"><i class="fa-solid fa-download"></i> Refresh Discord Channels</button>
+          </div>
+          <div class="card">
+            <div class="card-title"><i class="fa-solid fa-credit-card"></i> Payment Methods</div>
+            <div class="form-group">
+              <label class="form-label">STC Pay Number</label>
+              <input class="form-input" id="set-stc-number" placeholder="05XXXXXXXX">
+            </div>
+            <div class="form-group">
+              <label class="form-label">STC Pay Name</label>
+              <input class="form-input" id="set-stc-name" placeholder="Account holder name">
+            </div>
+            <div class="divider"></div>
+            <div class="form-group">
+              <label class="form-label">Al Rajhi IBAN</label>
+              <input class="form-input" id="set-alrajhi-iban" placeholder="SA0000000000000000000000">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Al Rajhi Name</label>
+              <input class="form-input" id="set-alrajhi-name" placeholder="Account holder name">
+            </div>
+            <div class="divider"></div>
+            <div class="form-group">
+              <label class="form-label">PayPal Email</label>
+              <input class="form-input" id="set-paypal-email" placeholder="pay@example.com">
+            </div>
+            <div class="form-group">
+              <label class="form-label">PayPal Name</label>
+              <input class="form-input" id="set-paypal-name" placeholder="Account holder name">
+            </div>
+            <div class="divider"></div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Crypto USDT Address</label>
+                <input class="form-input" id="set-crypto-address" placeholder="T...">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Crypto Network</label>
+                <select class="form-select" id="set-crypto-network"><option>TRC20</option><option>ERC20</option><option>BEP20</option></select>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn lg" onclick="saveSettings()"><i class="fa-solid fa-save"></i> Save All Settings</button>
+        </div>
+      </div>
+
+      <!-- LOGS -->
+      <div class="page" id="page-logs">
+        <div class="page-header">
+          <h2>System Logs</h2>
+          <button class="btn danger sm" onclick="clearLogs()"><i class="fa-solid fa-trash"></i> Clear</button>
+        </div>
+        <div class="card">
+          <div id="logs-list" style="max-height:65vh;overflow-y:auto"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PRODUCT MODAL -->
+<div class="modal-overlay" id="product-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="product-modal-title">Add Product</h2>
+      <button class="modal-close" onclick="closeModal('product-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="prod-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Title (English) *</label>
+          <input class="form-input" id="prod-title-en" placeholder="PUBG Account - Conqueror">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Title (Arabic)</label>
+          <input class="form-input" id="prod-title-ar" placeholder="حساب ببجي - كونكر" dir="rtl">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label class="form-label">Game</label>
+          <select class="form-select" id="prod-game">
+            <option>PUBG</option><option>Fortnite</option><option>Call of Duty</option>
+            <option>Valorant</option><option>Genshin</option><option>Clash Royale</option><option>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Price *</label>
+          <input class="form-input" type="number" step="0.01" id="prod-price" placeholder="50.00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Warranty (days)</label>
+          <input class="form-input" type="number" id="prod-warranty" placeholder="30">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Rank / Level</label>
+          <input class="form-input" id="prod-prestige" placeholder="Conqueror / Level 80">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Total Stats</label>
+          <input class="form-input" id="prod-stats" placeholder="K/D 5.2, 1500 wins">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Details (English)</label>
+        <textarea class="form-textarea" id="prod-details-en" placeholder="Full account details..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">التفاصيل (عربي)</label>
+        <textarea class="form-textarea" id="prod-details-ar" dir="rtl" placeholder="تفاصيل الحساب الكاملة..."></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Account Email</label>
+          <input class="form-input" id="prod-email" placeholder="acc@example.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Account Password</label>
+          <input class="form-input" id="prod-pass" placeholder="password123">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Extra Info (optional)</label>
+        <input class="form-input" id="prod-extra" placeholder="2FA backup codes, linked email, etc.">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Product Images (multiple)</label>
+        <div class="image-uploader" id="img-uploader" onclick="document.getElementById('img-input').click()">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+          <p>Click to upload • Multiple images supported • First image becomes the main image</p>
+        </div>
+        <input type="file" id="img-input" accept="image/*" multiple style="display:none" onchange="handleImageUpload(event)">
+        <div class="image-preview-grid" id="img-preview"></div>
+        <div class="form-hint">Tip: Upload 1-4 screenshots. They will all appear in the Discord post.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn secondary" onclick="closeModal('product-modal')">Cancel</button>
+      <button class="btn" onclick="saveProduct()"><i class="fa-solid fa-save"></i> Save Product</button>
+    </div>
+  </div>
+</div>
+
+<!-- BULK IMPORT MODAL -->
+<div class="modal-overlay" id="bulk-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Bulk Import Accounts</h2>
+      <button class="modal-close" onclick="closeModal('bulk-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row-3">
+        <div class="form-group">
+          <label class="form-label">Game</label>
+          <select class="form-select" id="bulk-game"><option>PUBG</option><option>Fortnite</option><option>Call of Duty</option><option>Valorant</option><option>Genshin</option><option>Clash Royale</option><option>Other</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Price</label>
+          <input class="form-input" type="number" step="0.01" id="bulk-price" placeholder="50.00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Warranty (days)</label>
+          <input class="form-input" type="number" id="bulk-warranty" placeholder="30">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Credentials (one per line, format: email:password or just password)</label>
+        <textarea class="form-textarea" id="bulk-creds" style="min-height:200px;font-family:'JetBrains Mono';font-size:12px" placeholder="user1@email.com:pass123&#10;user2@email.com:pass456&#10;justpassword789"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn secondary" onclick="closeModal('bulk-modal')">Cancel</button>
+      <button class="btn" onclick="bulkImport()"><i class="fa-solid fa-layer-group"></i> Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- TICKET MODAL -->
+<div class="modal-overlay" id="ticket-modal">
+  <div class="modal" style="max-width:540px">
+    <div class="modal-header">
+      <h2>Ticket <span id="ticket-modal-id"></span></h2>
+      <button class="modal-close" onclick="closeModal('ticket-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="ticket-modal-info"></div>
+      <div class="divider"></div>
+      <div class="form-group">
+        <label class="form-label">Send message to ticket channel</label>
+        <textarea class="form-textarea" id="ticket-msg" placeholder="Type a message to send to the customer..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn danger" onclick="closeTicketFromModal()"><i class="fa-solid fa-lock"></i> Close Ticket</button>
+      <button class="btn" onclick="sendTicketMessage()"><i class="fa-solid fa-paper-plane"></i> Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- POOL MODAL -->
+<div class="modal-overlay" id="pool-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h2>New Pool</h2>
+      <button class="modal-close" onclick="closeModal('pool-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Pool Name</label>
+        <input class="form-input" id="pool-name" placeholder="PUBG Smurf Accounts">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Price</label>
+        <input class="form-input" type="number" step="0.01" id="pool-price" placeholder="15.00">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn secondary" onclick="closeModal('pool-modal')">Cancel</button>
+      <button class="btn" onclick="createPool()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMAGE LIGHTBOX -->
+<div class="image-lightbox" id="lightbox" onclick="this.classList.remove('active')"><img id="lightbox-img"></div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ===================== STATE =====================
+let currentImages = []; // [{data: base64/url, isFile: bool}]
+let currentEditingTicketId = null;
+let guildData = { guilds: [], channels: [], categories: [], roles: [] };
+
+const API = (url, opts={}) => fetch(url, {headers:{'Content-Type':'application/json'}, ...opts}).then(r => r.json()).catch(e => ({error: e.message}));
+
+// ===================== NAVIGATION =====================
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => showPage(item.dataset.page));
+});
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
+  document.getElementById('page-title').textContent = page.charAt(0).toUpperCase() + page.slice(1);
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'products') loadProducts();
+  if (page === 'tickets') loadTickets();
+  if (page === 'payments') loadPayments();
+  if (page === 'orders') loadOrders();
+  if (page === 'customers') loadCustomers();
+  if (page === 'pools') loadPools();
+  if (page === 'settings') loadSettings();
+  if (page === 'logs') loadLogs();
+}
+
+// ===================== TOAST =====================
+function toast(msg, type='info') {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  const icons = {success:'fa-circle-check', error:'fa-circle-xmark', info:'fa-circle-info'};
+  t.innerHTML = `<i class="fa-solid ${icons[type]}"></i><span>${msg}</span>`;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+}
+
+// ===================== MODAL =====================
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+// ===================== DASHBOARD =====================
+async function loadDashboard() {
+  const s = await API('/api/stats');
+  if (s.error) return;
+  document.getElementById('stat-total-accounts').textContent = s.totalAccounts;
+  document.getElementById('stat-available').textContent = s.available;
+  document.getElementById('stat-open-tickets').textContent = s.openTickets;
+  document.getElementById('stat-revenue').textContent = (s.totalRevenue || 0).toFixed(2);
+  // bot status
+  const dot = document.getElementById('bot-status-dot');
+  const txt = document.getElementById('bot-status-text');
+  if (s.botOnline) { dot.classList.remove('offline'); txt.textContent = s.botTag || 'Online'; }
+  else { dot.classList.add('offline'); txt.textContent = 'Offline'; }
+  // recent logs
+  const logs = await API('/api/logs');
+  const wrap = document.getElementById('dash-recent-logs');
+  if (!logs || !logs.length) { wrap.innerHTML = '<div class="empty-state"><i class="fa-solid fa-inbox"></i><p>No activity yet</p></div>'; return; }
+  wrap.innerHTML = logs.slice(0, 20).map(l => `<div class="log-entry"><span class="log-time">${l.time.slice(11)}</span><span class="log-level ${l.level}">${l.level}</span><span class="log-msg">${escapeHtml(l.msg)}</span></div>`).join('');
+}
+
+// ===================== PRODUCTS =====================
+async function loadProducts() {
+  const search = document.getElementById('prod-search').value;
+  const game = document.getElementById('prod-filter-game').value;
+  const status = document.getElementById('prod-filter-status').value;
+  let url = '/api/accounts?';
+  if (search) url += 'search=' + encodeURIComponent(search) + '&';
+  if (game) url += 'game=' + encodeURIComponent(game) + '&';
+  if (status) url += 'status=' + encodeURIComponent(status) + '&';
+  const list = await API(url);
+  const grid = document.getElementById('products-grid');
+  document.getElementById('nav-products-count').textContent = list.length;
+  if (!list || !list.length) { grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><i class="fa-solid fa-box-open"></i><p>No products found. Click "Add Product" to create one.</p></div>'; return; }
+  grid.innerHTML = list.map(a => `
+    <div class="product-card">
+      <div class="product-img">
+        ${a.images && a.images.length ? `<img src="${a.images[0]}" onerror="this.style.display='none'">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--fg-dim)"><i class="fa-solid fa-image" style="font-size:32px"></i></div>`}
+        ${a.images && a.images.length > 1 ? `<div class="product-img-count"><i class="fa-solid fa-images"></i> ${a.images.length}</div>` : ''}
+      </div>
+      <div class="product-body">
+        <div class="product-title">${escapeHtml(a.titleEn)}</div>
+        <div class="product-meta">
+          <span class="badge ${a.status==='available'?'green':a.status==='sold'?'blue':'red'}">${a.status}</span>
+          <span>#${a.id}</span>
+          <span>${a.game}</span>
+        </div>
+        <div class="product-price">$${a.price.toFixed(2)}</div>
+        <div class="product-actions">
+          <button class="btn sm secondary" onclick="viewImages(${a.id})"><i class="fa-solid fa-image"></i></button>
+          <button class="btn sm secondary" onclick="editProduct(${a.id})"><i class="fa-solid fa-pen"></i></button>
+          <button class="btn sm danger" onclick="deleteProduct(${a.id})"><i class="fa-solid fa-trash"></i></button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function openProductModal() {
+  document.getElementById('product-modal-title').textContent = 'Add Product';
+  document.getElementById('prod-id').value = '';
+  ['prod-title-en','prod-title-ar','prod-price','prod-warranty','prod-prestige','prod-stats','prod-details-en','prod-details-ar','prod-email','prod-pass','prod-extra'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('prod-game').value = 'PUBG';
+  currentImages = [];
+  renderImagePreviews();
+  document.getElementById('product-modal').classList.add('active');
+}
+
+async function editProduct(id) {
+  const list = await API('/api/accounts');
+  const a = list.find(x => x.id === id);
+  if (!a) return toast('Product not found', 'error');
+  document.getElementById('product-modal-title').textContent = 'Edit Product #' + id;
+  document.getElementById('prod-id').value = a.id;
+  document.getElementById('prod-title-en').value = a.titleEn;
+  document.getElementById('prod-title-ar').value = a.titleAr || '';
+  document.getElementById('prod-game').value = a.game;
+  document.getElementById('prod-price').value = a.price;
+  document.getElementById('prod-warranty').value = a.warranty;
+  document.getElementById('prod-prestige').value = a.prestige || '';
+  document.getElementById('prod-stats').value = a.stats || '';
+  document.getElementById('prod-details-en').value = a.detailsEn || '';
+  document.getElementById('prod-details-ar').value = a.detailsAr || '';
+  document.getElementById('prod-email').value = a.email || '';
+  document.getElementById('prod-pass').value = a.pass || '';
+  document.getElementById('prod-extra').value = a.extra || '';
+  currentImages = (a.images || []).map(u => ({data: u, isFile: false}));
+  renderImagePreviews();
+  document.getElementById('product-modal').classList.add('active');
+}
+
+function handleImageUpload(e) {
+  const files = Array.from(e.target.files);
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      currentImages.push({data: ev.target.result, isFile: true});
+      renderImagePreviews();
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = '';
+}
+
+function renderImagePreviews() {
+  const wrap = document.getElementById('img-preview');
+  wrap.innerHTML = currentImages.map((img, i) => `
+    <div class="image-preview">
+      <img src="${img.data}" onclick="openLightbox('${img.data}')">
+      ${i === 0 ? '<div class="main-badge">MAIN</div>' : ''}
+      <button class="remove" onclick="removeImage(${i})"><i class="fa-solid fa-xmark"></i></button>
+    </div>`).join('');
+}
+
+function removeImage(idx) {
+  currentImages.splice(idx, 1);
+  renderImagePreviews();
+}
+
+async function saveProduct() {
+  const id = document.getElementById('prod-id').value;
+  const body = {
+    titleEn: document.getElementById('prod-title-en').value.trim(),
+    titleAr: document.getElementById('prod-title-ar').value.trim(),
+    game: document.getElementById('prod-game').value,
+    price: parseFloat(document.getElementById('prod-price').value),
+    warranty: parseInt(document.getElementById('prod-warranty').value) || 0,
+    prestige: document.getElementById('prod-prestige').value.trim(),
+    stats: document.getElementById('prod-stats').value.trim(),
+    detailsEn: document.getElementById('prod-details-en').value.trim(),
+    detailsAr: document.getElementById('prod-details-ar').value.trim(),
+    email: document.getElementById('prod-email').value.trim(),
+    pass: document.getElementById('prod-pass').value.trim(),
+    extra: document.getElementById('prod-extra').value.trim(),
+    images: currentImages.map(i => i.data)
+  };
+  if (!body.titleEn || !body.price) return toast('Title and price required', 'error');
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/accounts/${id}` : '/api/accounts';
+  const res = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (data.error) return toast(data.error, 'error');
+  toast(id ? 'Product updated & Discord post updated' : 'Product created & posted to Discord', 'success');
+  closeModal('product-modal');
+  loadProducts();
+}
+
+async function deleteProduct(id) {
+  if (!confirm('Delete this product and remove Discord post?')) return;
+  const res = await API(`/api/accounts/${id}`, { method: 'DELETE' });
+  if (res.error) return toast(res.error, 'error');
+  toast('Product deleted', 'success');
+  loadProducts();
+}
+
+async function viewImages(id) {
+  const list = await API('/api/accounts');
+  const a = list.find(x => x.id === id);
+  if (!a || !a.images.length) return toast('No images', 'info');
+  // open first image in lightbox; allow cycling could be added
+  openLightbox(a.images[0]);
+}
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('active');
+}
+
+// ===================== BULK IMPORT =====================
+function openBulkModal() { document.getElementById('bulk-modal').classList.add('active'); }
+async function bulkImport() {
+  const body = {
+    game: document.getElementById('bulk-game').value,
+    price: parseFloat(document.getElementById('bulk-price').value) || 0,
+    warranty: parseInt(document.getElementById('bulk-warranty').value) || 0,
+    credentials: document.getElementById('bulk-creds').value.split('\n').filter(l => l.trim())
+  };
+  if (!body.credentials.length) return toast('No credentials', 'error');
+  const res = await fetch('/api/accounts/bulk', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (data.error) return toast(data.error, 'error');
+  toast(`Imported ${data.imported} accounts`, 'success');
+  closeModal('bulk-modal');
+  loadProducts();
+}
+
+// ===================== TICKETS =====================
+async function loadTickets() {
+  const filter = document.getElementById('ticket-filter').value;
+  const url = '/api/tickets' + (filter ? `?status=${filter}` : '');
+  const list = await API(url);
+  const wrap = document.getElementById('tickets-list');
+  const openCount = (list || []).filter(t => t.status === 'open').length;
+  const badge = document.getElementById('nav-tickets-count');
+  badge.textContent = openCount;
+  badge.style.display = openCount > 0 ? 'inline-block' : 'none';
+  if (!list || !list.length) { wrap.innerHTML = '<div class="empty-state"><i class="fa-solid fa-ticket"></i><p>No tickets found</p></div>'; return; }
+  wrap.innerHTML = list.map(t => `
+    <div class="ticket-card">
+      <div class="ticket-avatar">${(t.userName||'?').charAt(0).toUpperCase()}</div>
+      <div class="ticket-info">
+        <div class="ticket-id">${t.id}</div>
+        <div class="ticket-user">${escapeHtml(t.userName)} ${t.status === 'open' ? '<span class="badge green" style="margin-left:6px">OPEN</span>' : '<span class="badge gray" style="margin-left:6px">CLOSED</span>'}</div>
+        <div class="ticket-product">${escapeHtml(t.accountTitle)} • <span class="badge blue">${t.method || '-'}</span> • $${(t.amount||0).toFixed(2)}</div>
+      </div>
+      <div class="ticket-actions">
+        <button class="btn sm secondary" onclick="openTicketModal('${t.id}')"><i class="fa-solid fa-comment"></i> Manage</button>
+        ${t.status === 'open' ? `<button class="btn sm danger" onclick="closeTicket('${t.id}')"><i class="fa-solid fa-lock"></i> Close</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+async function openTicketModal(id) {
+  const list = await API('/api/tickets');
+  const t = list.find(x => x.id === id);
+  if (!t) return toast('Ticket not found', 'error');
+  currentEditingTicketId = id;
+  document.getElementById('ticket-modal-id').textContent = id;
+  document.getElementById('ticket-modal-info').innerHTML = `
+    <div class="kv"><span class="k">Customer</span><span class="v">${escapeHtml(t.userName)}</span></div>
+    <div class="kv"><span class="k">Discord ID</span><span class="v" style="font-family:'JetBrains Mono';font-size:11px">${t.userId}</span></div>
+    <div class="kv"><span class="k">Product</span><span class="v">${escapeHtml(t.accountTitle)}</span></div>
+    <div class="kv"><span class="k">Amount</span><span class="v">$${(t.amount||0).toFixed(2)}</span></div>
+    <div class="kv"><span class="k">Method</span><span class="v">${t.method || '-'}</span></div>
+    <div class="kv"><span class="k">Status</span><span class="v">${t.status}</span></div>
+    <div class="kv"><span class="k">Created</span><span class="v">${t.createdAt ? new Date(t.createdAt).toLocaleString() : '-'}</span></div>`;
+  document.getElementById('ticket-msg').value = '';
+  document.getElementById('ticket-modal').classList.add('active');
+}
+
+async function sendTicketMessage() {
+  const msg = document.getElementById('ticket-msg').value.trim();
+  if (!msg) return toast('Type a message', 'error');
+  const res = await fetch(`/api/tickets/${currentEditingTicketId}/message`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({message: msg}) });
+  const data = await res.json();
+  if (data.error) return toast(data.error, 'error');
+  toast('Message sent to ticket', 'success');
+  document.getElementById('ticket-msg').value = '';
+}
+
+async function closeTicket(id) {
+  if (!confirm('Close this ticket? The channel will be deleted.')) return;
+  const res = await API(`/api/tickets/${id}/close`, { method:'POST' });
+  if (res.error) return toast(res.error, 'error');
+  toast('Ticket closed', 'success');
+  loadTickets();
+}
+
+async function closeTicketFromModal() {
+  if (!currentEditingTicketId) return;
+  await closeTicket(currentEditingTicketId);
+  closeModal('ticket-modal');
+}
+
+// ===================== PAYMENTS =====================
+async function loadPayments() {
+  const filter = document.getElementById('pay-filter').value;
+  const url = '/api/payments' + (filter ? `?status=${filter}` : '');
+  const list = await API(url);
+  const tbody = document.getElementById('payments-tbody');
+  const pending = (list || []).filter(p => p.status === 'Pending' || p.status === 'Waiting Review').length;
+  const badge = document.getElementById('nav-payments-count');
+  badge.textContent = pending;
+  badge.style.display = pending > 0 ? 'inline-block' : 'none';
+  if (!list || !list.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--fg-muted)">No payment requests</td></tr>'; return; }
+  tbody.innerHTML = list.map(p => `
+    <tr>
+      <td style="font-family:'JetBrains Mono';font-size:11px">${p.id}</td>
+      <td>${escapeHtml(p.userName)}</td>
+      <td>${escapeHtml(p.accountTitle)}</td>
+      <td>$${(p.amount||0).toFixed(2)}</td>
+      <td><span class="badge blue">${p.method}</span></td>
+      <td><span class="badge ${p.status==='Approved'?'green':p.status==='Rejected'?'red':p.status==='Waiting Review'?'yellow':'gray'}">${p.status}</span></td>
+      <td style="font-size:11px;color:var(--fg-muted)">${p.date}</td>
+      <td>
+        ${p.status === 'Waiting Review' || p.status === 'Pending' ? `
+          <button class="btn sm success" onclick="approvePayment('${p.id}')"><i class="fa-solid fa-check"></i></button>
+          <button class="btn sm danger" onclick="rejectPayment('${p.id}')"><i class="fa-solid fa-xmark"></i></button>
+        ` : '-'}
+      </td>
+    </tr>`).join('');
+}
+
+async function approvePayment(id) {
+  if (!confirm(`Approve payment ${id}? This will deliver the account to the customer and auto-close the ticket.`)) return;
+  const res = await API(`/api/payments/${id}/approve`, { method:'POST' });
+  if (res.error) return toast(res.error, 'error');
+  toast('Payment approved & account delivered!', 'success');
+  loadPayments();
+  loadDashboard();
+}
+
+async function rejectPayment(id) {
+  const reason = prompt('Reason for rejection (optional):');
+  const res = await fetch(`/api/payments/${id}/reject`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({reason: reason || ''}) });
+  const data = await res.json();
+  if (data.error) return toast(data.error, 'error');
+  toast('Payment rejected', 'info');
+  loadPayments();
+}
+
+// ===================== ORDERS =====================
+async function loadOrders() {
+  const list = await API('/api/orders');
+  const tbody = document.getElementById('orders-tbody');
+  if (!list || !list.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--fg-muted)">No orders yet</td></tr>'; return; }
+  tbody.innerHTML = list.map(o => `
+    <tr>
+      <td style="font-family:'JetBrains Mono';font-size:11px">${o.id}</td>
+      <td>${escapeHtml(o.cust)}</td>
+      <td>${escapeHtml(o.item)}</td>
+      <td>$${(o.amount||0).toFixed(2)}</td>
+      <td><span class="badge blue">${o.paymentMethod || '-'}</span></td>
+      <td><span class="badge ${o.status==='Delivered'?'green':'yellow'}">${o.status}</span></td>
+      <td style="font-size:11px;color:var(--fg-muted)">${o.date}</td>
+      <td>${o.email ? `<div style="font-size:11px"><div>📧 ${escapeHtml(o.email)}</div><div>🔑 ${escapeHtml(o.pass)}</div></div>` : '-'}</td>
+    </tr>`).join('');
+}
+
+// ===================== CUSTOMERS =====================
+async function loadCustomers() {
+  const list = await API('/api/customers');
+  const tbody = document.getElementById('customers-tbody');
+  if (!list || !list.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--fg-muted)">No customers yet. They appear here after their first purchase.</td></tr>'; return; }
+  tbody.innerHTML = list.map(c => `
+    <tr>
+      <td>${escapeHtml(c.name)}</td>
+      <td style="font-family:'JetBrains Mono';font-size:11px">${c.discordId}</td>
+      <td>${c.purchases || 0}</td>
+      <td>$${(c.spent||0).toFixed(2)}</td>
+      <td><span class="badge ${c.trust==='Blacklisted'?'red':'green'}">${c.trust}</span></td>
+      <td style="font-size:11px;color:var(--fg-muted)">${c.joined}</td>
+      <td>
+        ${c.trust === 'Blacklisted'
+          ? `<button class="btn sm secondary" onclick="toggleBlacklist('${c.id}','unblacklist')">Unblacklist</button>`
+          : `<button class="btn sm danger" onclick="toggleBlacklist('${c.id}','blacklist')">Blacklist</button>`}
+        <button class="btn sm danger" onclick="deleteCustomer('${c.id}')"><i class="fa-solid fa-trash"></i></button>
+      </td>
+    </tr>`).join('');
+}
+
+async function toggleBlacklist(id, action) {
+  await API(`/api/customers/${id}/${action}`, { method:'POST' });
+  toast(`Customer ${action === 'blacklist' ? 'blacklisted' : 'unblacklisted'}`, 'info');
+  loadCustomers();
+}
+
+async function deleteCustomer(id) {
+  if (!confirm('Delete this customer record?')) return;
+  await API(`/api/customers/${id}`, { method:'DELETE' });
+  toast('Customer deleted', 'info');
+  loadCustomers();
+}
+
+// ===================== POOLS =====================
+async function loadPools() {
+  const list = await API('/api/pools');
+  const wrap = document.getElementById('pools-list');
+  if (!list || !list.length) { wrap.innerHTML = '<div class="empty-state"><i class="fa-solid fa-layer-group"></i><p>No pools. Create one to group similar accounts.</p></div>'; return; }
+  wrap.innerHTML = list.map(p => `
+    <div class="card" style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-weight:600">${escapeHtml(p.name)}</div>
+        <div style="font-size:12px;color:var(--fg-muted)">$${(p.price||0).toFixed(2)} • ${(p.stock||[]).length} in stock</div>
+      </div>
+      <button class="btn sm danger" onclick="deletePool(${p.id})"><i class="fa-solid fa-trash"></i></button>
+    </div>`).join('');
+}
+
+function openPoolModal() { document.getElementById('pool-modal').classList.add('active'); }
+async function createPool() {
+  const body = { name: document.getElementById('pool-name').value.trim(), price: parseFloat(document.getElementById('pool-price').value) };
+  if (!body.name) return toast('Name required', 'error');
+  await fetch('/api/pools', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  toast('Pool created', 'success');
+  closeModal('pool-modal');
+  document.getElementById('pool-name').value = '';
+  document.getElementById('pool-price').value = '';
+  loadPools();
+}
+async function deletePool(id) {
+  if (!confirm('Delete this pool?')) return;
+  await API(`/api/pools/${id}`, { method:'DELETE' });
+  toast('Pool deleted', 'info');
+  loadPools();
+}
+
+// ===================== SETTINGS =====================
+async function loadSettings() {
+  const s = await API('/api/settings');
+  if (s.error) return;
+  document.getElementById('set-store-name').value = s.storeName || '';
+  document.getElementById('set-currency').value = s.currency || '$';
+  document.getElementById('set-close-delay').value = s.closeDelaySeconds || 10;
+  document.getElementById('set-admin-ids').value = (s.adminIds || []).join(',');
+  document.getElementById('set-stc-number').value = (s.stcPay && s.stcPay.number) || '';
+  document.getElementById('set-stc-name').value = (s.stcPay && s.stcPay.name) || '';
+  document.getElementById('set-alrajhi-iban').value = (s.alrajhi && s.alrajhi.iban) || '';
+  document.getElementById('set-alrajhi-name').value = (s.alrajhi && s.alrajhi.name) || '';
+  document.getElementById('set-paypal-email').value = (s.paypal && s.paypal.email) || '';
+  document.getElementById('set-paypal-name').value = (s.paypal && s.paypal.name) || '';
+  document.getElementById('set-crypto-address').value = s.crypto && s.crypto.address || '';
+  document.getElementById('set-crypto-network').value = s.crypto && s.crypto.network || 'TRC20';
+  await fetchGuildData();
+  // set selected values after fetch
+  setTimeout(() => {
+    document.getElementById('set-admin-role').value = s.adminRoleId || '';
+    document.getElementById('set-ticket-category').value = s.ticketCategoryId || '';
+    document.getElementById('set-accounts-channel').value = s.accountsChannelId || '';
+    document.getElementById('set-log-channel').value = s.logChannelId || '';
+  }, 200);
+}
+
+async function fetchGuildData() {
+  guildData = await API('/api/guilds');
+  if (guildData.error) return;
+  const fillSelect = (selId, items, noneLabel) => {
+    const sel = document.getElementById(selId);
+    sel.innerHTML = `<option value="">${noneLabel || '— None —'}</option>` + items.map(i => `<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('');
+  };
+  fillSelect('set-admin-role', guildData.roles, '— No role —');
+  fillSelect('set-ticket-category', guildData.categories, '— Not set —');
+  fillSelect('set-accounts-channel', guildData.channels, '— Not set —');
+  fillSelect('set-log-channel', guildData.channels, '— Not set —');
+}
+
+async function saveSettings() {
+  const body = {
+    storeName: document.getElementById('set-store-name').value.trim(),
+    currency: document.getElementById('set-currency').value.trim() || '$',
+    closeDelaySeconds: parseInt(document.getElementById('set-close-delay').value) || 10,
+    adminIds: document.getElementById('set-admin-ids').value.split(',').map(s => s.trim()).filter(Boolean),
+    adminRoleId: document.getElementById('set-admin-role').value,
+    ticketCategoryId: document.getElementById('set-ticket-category').value,
+    accountsChannelId: document.getElementById('set-accounts-channel').value,
+    logChannelId: document.getElementById('set-log-channel').value,
+    stcPay: { number: document.getElementById('set-stc-number').value.trim(), name: document.getElementById('set-stc-name').value.trim() },
+    alrajhi: { iban: document.getElementById('set-alrajhi-iban').value.trim(), name: document.getElementById('set-alrajhi-name').value.trim() },
+    paypal: { email: document.getElementById('set-paypal-email').value.trim(), name: document.getElementById('set-paypal-name').value.trim() },
+    crypto: { address: document.getElementById('set-crypto-address').value.trim(), network: document.getElementById('set-crypto-network').value }
+  };
+  const res = await fetch('/api/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (data.error) return toast(data.error, 'error');
+  toast('Settings saved!', 'success');
+}
+
+// ===================== LOGS =====================
+async function loadLogs() {
+  const list = await API('/api/logs');
+  const wrap = document.getElementById('logs-list');
+  if (!list || !list.length) { wrap.innerHTML = '<div class="empty-state"><i class="fa-solid fa-list"></i><p>No logs yet</p></div>'; return; }
+  wrap.innerHTML = list.map(l => `<div class="log-entry"><span class="log-time">${l.time}</span><span class="log-level ${l.level}">${l.level}</span><span class="log-msg">${escapeHtml(l.msg)}</span></div>`).join('');
+}
+async function clearLogs() {
+  if (!confirm('Clear all logs?')) return;
+  await API('/api/logs', { method:'DELETE' });
+  toast('Logs cleared', 'info');
+  loadLogs();
+}
+
+// ===================== UTILS =====================
+function escapeHtml(s) { if (s == null) return ''; return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function refreshAll() { const active = document.querySelector('.page.active').id.replace('page-',''); showPage(active); }
+
+// LIVE CLOCK
+setInterval(() => {
+  document.getElementById('live-time').textContent = new Date().toLocaleTimeString();
+}, 1000);
+
+// AUTO REFRESH
+setInterval(() => {
+  const active = document.querySelector('.page.active').id.replace('page-','');
+  if (active === 'dashboard') loadDashboard();
+  if (active === 'tickets') loadTickets();
+  if (active === 'payments') loadPayments();
+}, 15000);
+
+// INIT
+loadDashboard();
+</script>
+</body>
+</html>

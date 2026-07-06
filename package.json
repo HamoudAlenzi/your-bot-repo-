@@ -1,0 +1,20 @@
+{
+  "name": "acc-store-bot",
+  "version": "2.0.0",
+  "description": "Discord store bot with control panel, ticket system, multi-image upload, and auto-delivery",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node bot.js"
+  },
+  "engines": {
+    "node": ">=16.9.0"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "keywords": ["discord", "bot", "store", "tickets", "panel"],
+  "license": "MIT"
+}
