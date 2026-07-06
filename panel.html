@@ -33,12 +33,13 @@ table{width:100%;border-collapse:collapse}thead{background:var(--bg-input)}th{pa
 .toast-c{position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:6px}.toast{padding:10px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);font-size:13px;display:flex;align-items:center;gap:8px;animation:tIn .3s ease;min-width:280px;max-width:400px;font-family:'Cairo',sans-serif}.toast.success{border-left:3px solid var(--green)}.toast.error{border-left:3px solid var(--red)}.toast.warning{border-left:3px solid var(--yellow)}.toast.info{border-left:3px solid var(--accent)}@keyframes tIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}@keyframes tOut{from{opacity:1}to{transform:translateX(100%);opacity:0}}
 .modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:none;align-items:center;justify-content:center;padding:16px}.modal-ov.show{display:flex}.modal{background:var(--bg);border-radius:12px;width:100%;max-width:400px;box-shadow:var(--shadow);border:1px solid var(--border)}.modal-hd{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}.modal-hd h3{font-size:15px;font-weight:700}.modal-x{width:28px;height:28px;border-radius:var(--radius-sm);border:none;background:var(--bg-card);color:var(--fg-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all var(--transition)}.modal-x:hover{background:var(--red);color:#fff}.modal-bd{padding:18px}.modal-ft{padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:6px}
 .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px}.stat-box{background:var(--bg-chat);border:1px solid var(--border);border-radius:var(--radius);padding:14px}.stat-box .sv{font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace}.stat-box .sl{font-size:11px;color:var(--fg-muted);margin-top:2px}
-.log-view{background:var(--bg-deep);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;max-height:300px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7}.log-line{display:flex;gap:6px}.log-t{color:var(--fg-dim);flex-shrink:0}.log-l{font-weight:600;flex-shrink:0;width:40px}.log-l.info{color:var(--accent)}.log-l.warn{color:var(--yellow)}.log-l.error{color:var(--red)}.log-m{color:var(--fg-muted)}
+.log-view{background:var(--bg-deep);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;max-height:300px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7}
 .empty{text-align:center;padding:40px;color:var(--fg-dim)}.empty i{font-size:32px;margin-bottom:10px;opacity:.3;display:block}.empty p{font-size:13px}
 .tbl-img{width:48px;height:32px;border-radius:var(--radius-sm);object-fit:cover;cursor:pointer;border:1px solid var(--border)}
 .terms-box{background:var(--bg-chat);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-top:10px;max-height:200px;overflow-y:auto;font-size:12px;line-height:1.7;color:var(--fg-muted)}.terms-box.ar{direction:rtl;text-align:right}
 .loading{text-align:center;padding:40px;color:var(--fg-dim)}.loading i{animation:spin 1s linear infinite;display:inline-block}@keyframes spin{to{transform:rotate(360deg)}}
 .error-box{background:var(--red-dim);border:1px solid rgba(218,55,60,.3);border-radius:var(--radius);padding:12px;margin-bottom:14px;color:var(--red);font-size:13px;display:none}.error-box.show{display:block}
+.ticket-card{background:var(--bg-chat);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px;transition:border-color var(--transition)}.ticket-card:hover{border-color:var(--accent)}.ticket-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}.ticket-title{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}.ticket-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--fg-muted);margin-bottom:10px}.ticket-meta span{display:flex;align-items:center;gap:4px}.ticket-actions{display:flex;gap:6px;flex-wrap:wrap}
 @media(max-width:900px){.server-bar{display:none}.channel-bar{width:60px}.ch-header,.ch-item span,.ch-badge,.ch-user-name,.ch-user-status,.ch-cat{display:none}.ch-item{justify-content:center}.ch-item i{width:auto}.main-area{margin-left:0}.msg{padding:2px 16px 2px 52px}.msg-avatar{left:8px;width:36px;height:36px}.fr,.f3{grid-template-columns:1fr}}
 </style>
 </head>
@@ -57,6 +58,7 @@ table{width:100%;border-collapse:collapse}thead{background:var(--bg-input)}th{pa
       <div class="ch-item" data-ch="terms"><i class="fas fa-hashtag"></i><span>terms</span></div>
       <div class="ch-cat">Management</div>
       <div class="ch-item" data-ch="orders"><i class="fas fa-hashtag"></i><span>orders</span><span class="ch-badge" id="pendBadge">0</span></div>
+      <div class="ch-item" data-ch="tickets"><i class="fas fa-ticket-alt"></i><span>tickets</span><span class="ch-badge" id="ticketBadge" style="background:var(--yellow);color:#000">0</span></div>
       <div class="ch-item" data-ch="stock"><i class="fas fa-hashtag"></i><span>stock-pool</span></div>
       <div class="ch-item" data-ch="customers"><i class="fas fa-hashtag"></i><span>customers</span></div>
       <div class="ch-cat">Admin Only</div>
@@ -74,6 +76,7 @@ table{width:100%;border-collapse:collapse}thead{background:var(--bg-input)}th{pa
       <div class="ch-content active" id="ch-accounts"><div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div></div>
       <div class="ch-content" id="ch-terms" style="display:none"><div class="loading"><i class="fas fa-spinner fa-spin"></i></div></div>
       <div class="ch-content" id="ch-orders" style="display:none"><div class="loading"><i class="fas fa-spinner fa-spin"></i></div></div>
+      <div class="ch-content" id="ch-tickets" style="display:none"><div class="loading"><i class="fas fa-spinner fa-spin"></i></div></div>
       <div class="ch-content" id="ch-stock" style="display:none"></div>
       <div class="ch-content" id="ch-customers" style="display:none"></div>
       <div class="ch-content" id="ch-settings" style="display:none"></div>
@@ -90,6 +93,7 @@ table{width:100%;border-collapse:collapse}thead{background:var(--bg-input)}th{pa
       <div class="panel-tab" data-tab="tab-add">Add Account</div>
       <div class="panel-tab" data-tab="tab-bulk">Bulk Import</div>
       <div class="panel-tab" data-tab="tab-orders">Orders</div>
+      <div class="panel-tab" data-tab="tab-tickets">Tickets <span class="badge badge-yellow" id="payTicketBadge" style="margin-left:4px">0</span></div>
       <div class="panel-tab" data-tab="tab-payments">Payments <span class="badge badge-yellow" id="payBadge" style="margin-left:4px">0</span></div>
       <div class="panel-tab" data-tab="tab-stock">Stock Pool</div>
       <div class="panel-tab" data-tab="tab-customers">Customers</div>
@@ -97,14 +101,63 @@ table{width:100%;border-collapse:collapse}thead{background:var(--bg-input)}th{pa
       <div class="panel-tab" data-tab="tab-logs">Logs</div>
     </div>
     <div class="panel-body">
+      <!-- Accounts Tab -->
       <div class="tab-content active" id="tab-accounts"><div class="stats-row"><div class="stat-box"><div class="sv" id="stTotal">-</div><div class="sl">Total</div></div><div class="stat-box"><div class="sv" style="color:var(--green)" id="stAvail">-</div><div class="sl">Available</div></div><div class="stat-box"><div class="sv" style="color:var(--yellow)" id="stReserv">-</div><div class="sl">Reserved</div></div><div class="stat-box"><div class="sv" style="color:var(--red)" id="stSold">-</div><div class="sl">Sold</div></div></div><div class="tbl-wrap"><div class="tbl-toolbar"><div class="tbl-search"><i class="fas fa-search"></i><input placeholder="Search..." id="pAccS" oninput="loadPanelAcc()"></div><select class="tbl-filter" id="pAccG" onchange="loadPanelAcc()"><option value="">All Games</option><option>Call of Duty</option><option>Fortnite</option><option>Valorant</option><option>GTA V</option><option>Other</option></select><select class="tbl-filter" id="pAccSt" onchange="loadPanelAcc()"><option value="">All Status</option><option>available</option><option>reserved</option><option>sold</option><option>dead</option></select></div><div style="overflow-x:auto"><table><thead><tr><th>Images</th><th>Account</th><th>Game</th><th>Price</th><th>Status</th><th>Actions</th></tr></thead><tbody id="pAccTb"></tbody></table></div></div></div>
+
+      <!-- Add Account Tab -->
       <div class="tab-content" id="tab-add"><div class="error-box" id="formError"></div><input type="hidden" id="editAccId"><div class="fg"><label class="fl">Account Images (up to 5 max)</label><div class="img-upload" id="imgUp"><input type="file" accept="image/*" multiple onchange="handleMultiImg(event)" id="imgIn"><div id="imgPrev"><div class="img-upload-text"><i class="fas fa-images"></i>Click or drop multiple images here (Up to 5)<br><span style="font-size:11px;color:var(--fg-dim)">First uploaded image holds main cover position</span></div></div></div><div class="img-thumbs" id="imgThumbs"></div></div><div class="fg"><label class="fl">Game Title (English)</label><input class="fi" id="aTEn" placeholder="Call of Duty: Black Ops 7"></div><div class="fg"><label class="fl">Game Title (Arabic)</label><input class="fi" id="aTAr" placeholder="كول أوف ديوتي: بلاك أوبس 7" dir="rtl"></div><div class="fr"><div class="fg"><label class="fl">Game</label><select class="fs" id="aGame"><option>Call of Duty</option><option>Fortnite</option><option>Valorant</option><option>GTA V</option><option>Other</option></select></div><div class="fg"><label class="fl">Price ($)</label><input class="fi" id="aPrice" type="number" placeholder="12.99" min="0" step="0.01"></div></div><div class="f3"><div class="fg"><label class="fl">Prestige / Level</label><input class="fi" id="aPres" placeholder="Prestige 1"></div><div class="fg"><label class="fl">Total Stats</label><input class="fi" id="aStats" placeholder="910" style="font-family:'JetBrains Mono',monospace"></div><div class="fg"><label class="fl">Warranty (Days)</label><input class="fi" id="aWarr" type="number" value="3" min="0"></div></div><div class="fg"><label class="fl">Details (English)</label><textarea class="ft" id="aDEn" placeholder="Account details..."></textarea></div><div class="fg"><label class="fl">Details (Arabic)</label><textarea class="ft" id="aDAr" placeholder="تفاصيل الحساب..." dir="rtl"></textarea></div><div class="fr"><div class="fg"><label class="fl">Email</label><input class="fi" id="aEmail" placeholder="email@mail.com" style="font-family:'JetBrains Mono',monospace;font-size:12px"></div><div class="fg"><label class="fl">Password</label><input class="fi" id="aPass" type="password" placeholder="Password" style="font-family:'JetBrains Mono',monospace;font-size:12px"></div></div><div class="fg"><label class="fl">Extra Info (Internal)</label><textarea class="ft" id="aExtra" placeholder="2FA, security questions..."></textarea></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button class="btn btn-secondary" onclick="resetForm()"><i class="fas fa-eraser"></i> Clear</button><button class="btn btn-primary" onclick="saveAcc()" id="saveBtn"><i class="fas fa-save"></i> Save & Post</button></div></div>
+
+      <!-- Bulk Import Tab -->
       <div class="tab-content" id="tab-bulk"><div class="fg"><label class="fl">Game</label><select class="fs" id="bGame"><option>Call of Duty</option><option>Fortnite</option><option>Valorant</option><option>GTA V</option><option>Other</option></select></div><div class="fr"><div class="fg"><label class="fl">Price ($)</label><input class="fi" id="bPrice" type="number" placeholder="5.99" min="0"></div><div class="fg"><label class="fl">Warranty</label><input class="fi" id="bWarr" type="number" value="0" min="0"></div></div><div class="fg"><label class="fl">Credentials (email:password per line)</label><textarea class="ft" id="bData" rows="10" placeholder="email:password"></textarea></div><div style="display:flex;justify-content:flex-end"><button class="btn btn-primary" onclick="doBulk()"><i class="fas fa-file-import"></i> Import</button></div></div>
+
+      <!-- Orders Tab -->
       <div class="tab-content" id="tab-orders"><div class="tbl-wrap"><div class="tbl-toolbar"><div class="tbl-search"><i class="fas fa-search"></i><input placeholder="Search..." id="pOrdS" oninput="loadPanelOrd()"></div><select class="tbl-filter" id="pOrdSt" onchange="loadPanelOrd()"><option value="">All</option><option>Pending</option><option>Delivered</option><option>Cancelled</option><option>Refunded</option></select></div><div style="overflow-x:auto"><table><thead><tr><th>Order</th><th>Customer</th><th>Account</th><th>Amount</th><th>Payment</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead><tbody id="pOrdTb"></tbody></table></div></div></div>
+
+      <!-- Tickets Tab -->
+      <div class="tab-content" id="tab-tickets">
+        <div class="stats-row">
+          <div class="stat-box"><div class="sv" style="color:var(--green)" id="tkOpen">0</div><div class="sl">Open / Awaiting</div></div>
+          <div class="stat-box"><div class="sv" style="color:var(--yellow)" id="tkReview">0</div><div class="sl">Waiting Review</div></div>
+          <div class="stat-box"><div class="sv" style="color:var(--fg-muted)" id="tkClosed">0</div><div class="sl">Closed</div></div>
+          <div class="stat-box"><div class="sv" style="color:var(--accent)" id="tkTotal">0</div><div class="sl">Total Tickets</div></div>
+        </div>
+        <div class="tbl-wrap"><div class="tbl-toolbar">
+          <select class="tbl-filter" id="tkFilter" onchange="loadPanelTickets()"><option value="">All Status</option><option value="open">Open</option><option value="waiting_payment">Awaiting Payment</option><option value="waiting_review">Waiting Review</option><option value="closed">Closed</option></select>
+        </div><div style="overflow-x:auto"><table><thead><tr><th>Ticket</th><th>Customer</th><th>Product</th><th>Amount</th><th>Payment</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="tkTb"></tbody></table></div></div>
+      </div>
+
+      <!-- Payments Tab -->
       <div class="tab-content" id="tab-payments"><div class="stats-row"><div class="stat-box"><div class="sv" style="color:var(--yellow)" id="payPending">0</div><div class="sl">Pending Review</div></div><div class="stat-box"><div class="sv" style="color:var(--green)" id="payApproved">0</div><div class="sl">Approved</div></div><div class="stat-box"><div class="sv" style="color:var(--red)" id="payRejected">0</div><div class="sl">Rejected</div></div></div><div class="tbl-wrap"><div class="tbl-toolbar"><select class="tbl-filter" id="payFilter" onchange="loadPayments()"><option value="">All</option><option>Pending</option><option>Waiting Review</option><option>Approved</option><option>Rejected</option></select></div><div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>Customer</th><th>Account</th><th>Amount</th><th>Method</th><th>Status</th><th>Actions</th></tr></thead><tbody id="payTb"></tbody></table></div></div></div>
+
+      <!-- Stock Pool Tab -->
       <div class="tab-content" id="tab-stock"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div style="font-size:13px;color:var(--fg-muted)">Bulk credentials</div><button class="btn btn-primary btn-sm" onclick="addPool()"><i class="fas fa-plus"></i> New Pool</button></div><div id="poolList"></div></div>
+
+      <!-- Customers Tab -->
       <div class="tab-content" id="tab-customers"><div class="tbl-wrap"><div class="tbl-toolbar"><div class="tbl-search"><i class="fas fa-search"></i><input placeholder="Search..." id="pCustS" oninput="loadPanelCust()"></div><select class="tbl-filter" id="pCustT" onchange="loadPanelCust()"><option value="">All</option><option>Trusted</option><option>Verified</option><option>New</option><option>Blacklisted</option></select></div><div style="overflow-x:auto"><table><thead><tr><th>Customer</th><th>Trust</th><th>Spent</th><th>Purchases</th><th>Actions</th></tr></thead><tbody id="pCustTb"></tbody></table></div></div></div>
-      <div class="tab-content" id="tab-settings"><div class="fr" style="margin-bottom:14px"><div class="fg"><label class="fl">Bot Prefix</label><input class="fi" id="sPrefix" value="!" maxlength="5"></div><div class="fg"><label class="fl">Currency</label><input class="fi" id="sCur" value="$" maxlength="3"></div></div><div class="fr" style="margin-bottom:14px"><div class="fg"><label class="fl">Accounts Channel ID</label><input class="fi" id="sAccCh" placeholder="Right-click channel → Copy ID" style="font-family:'JetBrains Mono',monospace;font-size:11px"></div><div class="fg"><label class="fl">Log Channel ID</label><input class="fi" id="sLogCh" placeholder="Optional" style="font-family:'JetBrains Mono',monospace;font-size:11px"></div></div><div class="settings-card" style="background:var(--bg-chat);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px"><div style="font-size:14px;font-weight:700;margin-bottom:4px">📱 STC Pay</div><div class="fr"><div class="fg"><label class="fl">STC Pay Number</label><input class="fi" id="payStcNum" placeholder="05XXXXXXXX"></div><div class="fg"><label class="fl">Holder Name</label><input class="fi" id="payStcName" placeholder="Name"></div></div></div><div class="settings-card" style="background:var(--bg-chat);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px"><div style="font-size:14px;font-weight:700;margin-bottom:4px">🏦 AlRajhi Bank</div><div class="fr"><div class="fg"><label class="fl">IBAN</label><input class="fi" id="payRajhiIban" placeholder="SA00..."></div><div class="fg"><label class="fl">Account Name</label><input class="fi" id="payRajhiName" placeholder="Account Name"></div></div></div><div class="settings-card" style="background:var(--bg-chat);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px"><div style="font-size:14px;font-weight:700;margin-bottom:4px">💳 PayPal</div><div class="fg"><label class="fl">PayPal Email</label><input class="fi" id="payPaypalEmail" placeholder="pay@example.com"></div></div><div class="fg" style="margin-bottom:14px"><label class="fl">Terms (Arabic)</label><textarea class="ft" id="sTAr" rows="4" dir="rtl"></textarea></div><div class="fg" style="margin-bottom:14px"><label class="fl">Terms (English)</label><textarea class="ft" id="sTEn" rows="4"></textarea></div><div style="display:flex;justify-content:flex-end"><button class="btn btn-primary" onclick="saveSett()"><i class="fas fa-save"></i> Save All Settings</button></div></div>
+
+      <!-- Settings Tab -->
+      <div class="tab-content" id="tab-settings">
+        <div class="fr" style="margin-bottom:14px"><div class="fg"><label class="fl">Bot Prefix</label><input class="fi" id="sPrefix" value="!" maxlength="5"></div><div class="fg"><label class="fl">Currency</label><input class="fi" id="sCur" value="$" maxlength="3"></div></div>
+        <div class="fr" style="margin-bottom:14px"><div class="fg"><label class="fl">Accounts Channel ID</label><input class="fi" id="sAccCh" placeholder="Right-click channel -> Copy ID" style="font-family:'JetBrains Mono',monospace;font-size:11px"></div><div class="fg"><label class="fl">Log Channel ID</label><input class="fi" id="sLogCh" placeholder="Optional" style="font-family:'JetBrains Mono',monospace;font-size:11px"></div></div>
+        <div style="background:var(--bg-chat);border:1px solid var(--accent);border-radius:var(--radius);padding:18px;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:6px"><i class="fas fa-ticket-alt" style="color:var(--accent)"></i> Ticket System Settings</div>
+          <div class="fr" style="margin-bottom:12px">
+            <div class="fg"><label class="fl">Ticket Category ID</label><input class="fi" id="sTicketCat" placeholder="Right-click category -> Copy ID" style="font-family:'JetBrains Mono',monospace;font-size:11px"><span style="font-size:10px;color:var(--fg-dim);display:block;margin-top:3px">The Discord category where private ticket channels are created</span></div>
+            <div class="fg"><label class="fl">Bot Owner Discord ID</label><input class="fi" id="sOwnerId" placeholder="Your Discord user ID" style="font-family:'JetBrains Mono',monospace;font-size:11px"><span style="font-size:10px;color:var(--fg-dim);display:block;margin-top:3px">Gets admin access to all ticket channels</span></div>
+          </div>
+          <div style="padding:10px;background:var(--accent-dim);border-radius:var(--radius-sm);font-size:11px;color:var(--fg-muted);line-height:1.6">
+            <i class="fas fa-info-circle" style="color:var(--accent)"></i> <strong>How it works:</strong> When a customer clicks "Buy", a private ticket channel is created under this category. The customer selects a payment method, uploads their receipt, and you approve/reject from the Payments or Tickets tab. On approval, credentials are sent in the ticket and it auto-closes.
+          </div>
+        </div>
+        <div class="settings-card" style="background:var(--bg-chat);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px"><div style="font-size:14px;font-weight:700;margin-bottom:4px">📱 STC Pay</div><div class="fr"><div class="fg"><label class="fl">STC Pay Number</label><input class="fi" id="payStcNum" placeholder="05XXXXXXXX"></div><div class="fg"><label class="fl">Holder Name</label><input class="fi" id="payStcName" placeholder="Name"></div></div></div>
+        <div class="settings-card" style="background:var(--bg-chat);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px"><div style="font-size:14px;font-weight:700;margin-bottom:4px">🏦 AlRajhi Bank</div><div class="fr"><div class="fg"><label class="fl">IBAN</label><input class="fi" id="payRajhiIban" placeholder="SA00..."></div><div class="fg"><label class="fl">Account Name</label><input class="fi" id="payRajhiName" placeholder="Account Name"></div></div></div>
+        <div class="settings-card" style="background:var(--bg-chat);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px"><div style="font-size:14px;font-weight:700;margin-bottom:4px">💳 PayPal</div><div class="fg"><label class="fl">PayPal Email</label><input class="fi" id="payPaypalEmail" placeholder="pay@example.com"></div></div>
+        <div class="fg" style="margin-bottom:14px"><label class="fl">Terms (Arabic)</label><textarea class="ft" id="sTAr" rows="4" dir="rtl"></textarea></div>
+        <div class="fg" style="margin-bottom:14px"><label class="fl">Terms (English)</label><textarea class="ft" id="sTEn" rows="4"></textarea></div>
+        <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary" onclick="saveSett()"><i class="fas fa-save"></i> Save All Settings</button></div>
+      </div>
+
+      <!-- Logs Tab -->
       <div class="tab-content" id="tab-logs"><div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-secondary btn-sm" onclick="clearLogs()"><i class="fas fa-trash"></i> Clear</button></div><div class="log-view" id="logView"></div></div>
     </div>
   </div>
@@ -120,7 +173,7 @@ function maskC(s){if(!s)return'***';if(s.length<=4)return'****';return s[0]+'*'.
 function showFormError(msg){const el=document.getElementById('formError');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),8000)}
 async function api(method,path,body){const opts={method,headers:{'Content-Type':'application/json'}};if(body)opts.body=JSON.stringify(body);const r=await fetch(API+path,opts);const data=await r.json().catch(()=>null);if(!r.ok)throw new Error(data&&data.error?data.error:'Server error ('+r.status+')');return data}
 
-// ===== MULTI IMAGE UPLOAD HANDLING =====
+// ===== MULTI IMAGE UPLOAD =====
 let curImgs=[];
 function handleMultiImg(e){
   const files=Array.from(e.target.files);
@@ -148,6 +201,7 @@ function handleMultiImg(e){
 }
 function renderThumbs(){
   const el=document.getElementById('imgThumbs');
+  document.getElementById('imgPrev').style.display=curImgs.length?'none':'block';
   el.innerHTML=curImgs.map((img,i)=>'<div class="img-thumb'+(i===0?' main':'')+'" onclick="showImg(\''+img.replace(/'/g,"\\'")+'\')"><img src="'+img+'" style="width:100%;height:100%;object-fit:cover;"><span class="main-tag">'+(i===0?'MAIN':'EXTRA')+'</span><span class="remove-img" onclick="event.stopPropagation();removeImg('+i+')"><i class="fas fa-times"></i></span></div>').join('');
 }
 function removeImg(i){curImgs.splice(i,1);renderThumbs();if(!curImgs.length)document.getElementById('imgPrev').style.display='block';}
@@ -155,7 +209,7 @@ function removeImg(i){curImgs.splice(i,1);renderThumbs();if(!curImgs.length)docu
 // ===== NAVIGATION =====
 document.querySelectorAll('.ch-item').forEach(ch=>{ch.addEventListener('click',()=>{document.querySelectorAll('.ch-item').forEach(x=>x.classList.remove('active'));ch.classList.add('active');const id=ch.dataset.ch;document.querySelectorAll('.ch-content').forEach(c=>c.style.display='none');document.getElementById('ch-'+id).style.display='block';document.getElementById('chTitle').textContent=id;})});
 document.querySelectorAll('.panel-tab').forEach(t=>{t.addEventListener('click',()=>{document.querySelectorAll('.panel-tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));t.classList.add('active');document.getElementById(t.dataset.tab).classList.add('active')})});
-function openPanel(){document.getElementById('panelOv').classList.add('show');loadPanelAcc();loadPanelOrd();loadPanelCust();loadPools();loadPanelLogs();loadPayments();loadSett()}
+function openPanel(){document.getElementById('panelOv').classList.add('show');loadPanelAcc();loadPanelOrd();loadPanelCust();loadPools();loadPanelLogs();loadPayments();loadSett();loadPanelTickets()}
 function closePanel(){document.getElementById('panelOv').classList.remove('show')}
 
 // ===== API SYNC RENDERERS =====
@@ -163,37 +217,83 @@ async function loadAccountsCh(){try{const accs=await api('GET','/api/accounts?st
 accs.forEach(a=>{h+='<div class="msg"><div class="msg-avatar"><div class="bot-icon">A</div></div><div><div class="msg-header"><span class="msg-author bot">Acc. APP</span><span class="msg-bot-tag">BOT</span></div><div class="embed">'+(a.images&&a.images[0]?'<img src="'+a.images[0]+'" class="embed-img" onclick="showImg(\''+a.images[0].replace(/'/g,"\\'")+'\')">':'')+'<div class="embed-body"><div class="embed-title"><i class="fas fa-gamepad"></i> '+a.titleEn+'</div><div class="embed-field-value ar" dir="rtl">'+(a.titleAr||'')+'</div><div class="embed-row"><div class="embed-col"><strong>Rank:</strong> '+a.prestige+'</div><div class="embed-col"><strong>Warranty:</strong> '+a.warranty+' Days</div></div><div class="embed-price">$'+a.price.toFixed(2)+'</div></div></div></div></div>'});el.innerHTML=h||'<p class="empty">No active listings</p>';}catch(e){}}
 async function loadTermsCh(){try{const s=await api('GET','/api/settings');document.getElementById('ch-terms').innerHTML='<div class="msg"><div><strong>English Terms:</strong><br>'+s.termsEn+'<br><br><strong>Arabic Terms:</strong><br>'+s.termsAr+'</div></div>'}catch(e){}}
 async function loadOrdersCh(){try{const ords=await api('GET','/api/orders');let h='';ords.forEach(o=>{h+=`<div class="msg"><div><b>Order:</b> ${o.id} | ${o.item} | Status: ${o.status}</div></div>`});document.getElementById('ch-orders').innerHTML=h||'No orders';}catch(e){}}
+async function loadTicketsCh(){try{const tks=await api('GET','/api/tickets');let h='';const active=tks.filter(t=>t.status!=='closed');if(!active.length){h='<p class="empty"><i class="fas fa-ticket-alt"></i>No open tickets</p>';}else{active.forEach(t=>{const sc=t.status==='waiting_review'?'badge-yellow':t.status==='waiting_payment'?'badge-blue':'badge-green';h+=`<div class="ticket-card"><div class="ticket-header"><div class="ticket-title"><i class="fas fa-ticket-alt" style="color:var(--accent)"></i> ${t.id} <span class="badge ${sc}">${t.status.replace(/_/g,' ')}</span></div></div><div class="ticket-meta"><span><i class="fas fa-user"></i> ${t.userName}</span><span><i class="fas fa-gamepad"></i> ${t.accountTitle}</span><span><i class="fas fa-dollar-sign"></i> $${t.amount}</span>${t.paymentMethod?`<span><i class="fas fa-credit-card"></i> ${t.paymentMethod}</span>`:''}</div></div>`;});}document.getElementById('ch-tickets').innerHTML=h;}catch(e){}}
 
-async function loadStats(){try{const s=await api('GET','/api/stats');document.getElementById('stTotal').textContent=s.totalAccounts;document.getElementById('stAvail').textContent=s.available;document.getElementById('stReserv').textContent=s.reserved;document.getElementById('stSold').textContent=s.sold;document.getElementById('pendBadge').textContent=s.pendingOrders;document.getElementById('payBadge').textContent=s.pendingPayments}catch(e){}}
+async function loadStats(){try{const s=await api('GET','/api/stats');document.getElementById('stTotal').textContent=s.totalAccounts;document.getElementById('stAvail').textContent=s.available;document.getElementById('stReserv').textContent=s.reserved;document.getElementById('stSold').textContent=s.sold;document.getElementById('pendBadge').textContent=s.pendingOrders;document.getElementById('payBadge').textContent=s.pendingPayments;document.getElementById('ticketBadge').textContent=s.openTickets||0;document.getElementById('payTicketBadge').textContent=s.openTickets||0}catch(e){}}
+
 async function loadPanelAcc(){try{const accs=await api('GET','/api/accounts');loadStats();const tb=document.getElementById('pAccTb');tb.innerHTML=accs.map(a=>'<tr><td>'+(a.images&&a.images[0]?`<img src="${a.images[0]}" class="tbl-img">`:'-')+'</td><td>'+a.titleEn+'</td><td>'+a.game+'</td><td>$'+a.price+'</td><td>'+a.status+'</td><td><button class="btn-icon danger" onclick="delAcc('+a.id+')"><i class="fas fa-trash"></i></button></td></tr>').join('')}catch(e){}}
-async function loadPanelOrd(){try{const ords=await api('GET','/api/orders');document.getElementById('pOrdTb').innerHTML=ords.map(o=>`<tr><td>${o.id}</td><td>${o.cust}</td><td>${o.item}</td><td>$${o.amount}</td><td>${o.paymentMethod}</td><td>${o.status}</td><td>-</td><td>${o.status==='Pending'?`<button class="btn btn-green btn-sm" onclick="deliverOrd('${o.id}')">Deliver</button>`:''}</td></tr>`).join('')}catch(e){}}
-async function loadPayments(){try{const pays=await api('GET','/api/payments');document.getElementById('payPending').textContent=pays.filter(p=>p.status==='Waiting Review'||p.status==='Pending').length;document.getElementById('payApproved').textContent=pays.filter(p=>p.status==='Approved').length;document.getElementById('payRejected').textContent=pays.filter(p=>p.status==='Rejected').length;document.getElementById('payTb').innerHTML=pays.map(p=>`<tr><td>${p.id}</td><td>${p.userName}</td><td>${p.accountTitle}</td><td>$${p.amount}</td><td>${p.method}</td><td>${p.status}</td><td>${p.status==='Waiting Review'||p.status==='Pending'?`<button class="btn btn-green btn-sm" onclick="approvePay('${p.id}')">Approve</button> <button class="btn btn-danger btn-sm" onclick="rejectPay('${p.id}')">Reject</button>`:'-'}</td></tr>`).join('')}catch(e){}}
+async function loadPanelOrd(){try{const ords=await api('GET','/api/orders');document.getElementById('pOrdTb').innerHTML=ords.map(o=>`<tr><td>${o.id}</td><td>${o.cust}</td><td>${o.item}</td><td>$${o.amount}</td><td>${o.paymentMethod||'-'}</td><td>${o.status}</td><td>${o.date||'-'}</td><td>${o.status==='Pending'?`<button class="btn btn-green btn-sm" onclick="deliverOrd('${o.id}')">Deliver</button>`:''}</td></tr>`).join('')}catch(e){}}
+
+// ===== TICKETS PANEL =====
+async function loadPanelTickets(){try{
+  const filter=document.getElementById('tkFilter').value;
+  const tks=await api('GET','/api/tickets'+(filter?'?status='+filter:''));
+  const all=await api('GET','/api/tickets');
+  document.getElementById('tkOpen').textContent=all.filter(t=>t.status==='open'||t.status==='waiting_payment').length;
+  document.getElementById('tkReview').textContent=all.filter(t=>t.status==='waiting_review').length;
+  document.getElementById('tkClosed').textContent=all.filter(t=>t.status==='closed').length;
+  document.getElementById('tkTotal').textContent=all.length;
+
+  document.getElementById('tkTb').innerHTML=tks.map(t=>{
+    const sc=t.status==='waiting_review'?'badge-yellow':t.status==='waiting_payment'?'badge-blue':t.status==='closed'?'badge-gray':'badge-green';
+    const sl=t.status.replace(/_/g,' ');
+    let acts='';
+    if(t.status==='waiting_review'){
+      acts=`<button class="btn btn-green btn-sm" onclick="approvePay('${t.paymentId}')"><i class="fas fa-check"></i> Approve</button> <button class="btn btn-danger btn-sm" onclick="rejectPay('${t.paymentId}')"><i class="fas fa-times"></i> Reject</button>`;
+    }
+    if(t.status!=='closed'){
+      acts+=` <button class="btn btn-secondary btn-sm" onclick="closeTicket('${t.id}')"><i class="fas fa-lock"></i> Close</button>`;
+    }
+    return `<tr><td>${t.id}</td><td>${t.userName}</td><td>${t.accountTitle}</td><td>$${t.amount}</td><td>${t.paymentMethod||'-'}</td><td><span class="badge ${sc}">${sl}</span></td><td>${new Date(t.createdAt).toLocaleString().slice(0,16)}</td><td>${acts||'-'}</td></tr>`;
+  }).join('');
+  loadStats();
+}catch(e){}}
+
+async function closeTicket(id){try{await api('POST','/api/tickets/'+id+'/close');toast('Ticket closed','success');loadPanelTickets();loadTicketsCh();}catch(e){toast(e.message,'error')}}
+
+async function loadPayments(){try{const pays=await api('GET','/api/payments');document.getElementById('payPending').textContent=pays.filter(p=>p.status==='Waiting Review'||p.status==='Pending').length;document.getElementById('payApproved').textContent=pays.filter(p=>p.status==='Approved').length;document.getElementById('payRejected').textContent=pays.filter(p=>p.status==='Rejected').length;document.getElementById('payTb').innerHTML=pays.map(p=>`<tr><td>${p.id}</td><td>${p.userName}</td><td>${p.accountTitle}</td><td>$${p.amount}</td><td>${p.method}</td><td><span class="badge ${p.status==='Waiting Review'?'badge-yellow':p.status==='Approved'?'badge-green':p.status==='Rejected'?'badge-red':'badge-blue'}">${p.status}</span></td><td>${p.status==='Waiting Review'||p.status==='Pending'?`<button class="btn btn-green btn-sm" onclick="approvePay('${p.id}')">Approve</button> <button class="btn btn-danger btn-sm" onclick="rejectPay('${p.id}')">Reject</button>`:'-'}</td></tr>`).join('')}catch(e){}}
 async function loadPanelCust(){try{const c=await api('GET','/api/customers');document.getElementById('pCustTb').innerHTML=c.map(x=>`<tr><td>${x.name}</td><td>${x.trust}</td><td>$${x.spent}</td><td>${x.purchases}</td><td>-</td></tr>`).join('')}catch(e){}}
 async function loadPools(){try{const p=await api('GET','/api/pools');document.getElementById('poolList').innerHTML=p.map(x=>`<div><b>${x.name}</b> ($${x.price})</div>`).join('')}catch(e){}}
 async function loadPanelLogs(){try{const l=await api('GET','/api/logs');document.getElementById('logView').innerHTML=l.map(x=>`<div>[${x.time}] ${x.level}: ${x.msg}</div>`).join('')}catch(e){}}
-async function loadSett(){try{const s=await api('GET','/api/settings');document.getElementById('sPrefix').value=s.prefix;document.getElementById('sCur').value=s.currency;document.getElementById('sAccCh').value=s.accountsChannelId;document.getElementById('sLogCh').value=s.logChannelId;document.getElementById('sTAr').value=s.termsAr;document.getElementById('sTEn').value=s.termsEn;document.getElementById('payStcNum').value=s.stcPay.number;document.getElementById('payStcName').value=s.stcPay.name;document.getElementById('payRajhiIban').value=s.alrajhi.iban;document.getElementById('payRajhiName').value=s.alrajhi.name;document.getElementById('payPaypalEmail').value=s.paypal.email;}catch(e){}}
+async function loadSett(){try{const s=await api('GET','/api/settings');document.getElementById('sPrefix').value=s.prefix;document.getElementById('sCur').value=s.currency;document.getElementById('sAccCh').value=s.accountsChannelId;document.getElementById('sLogCh').value=s.logChannelId;document.getElementById('sTicketCat').value=s.ticketCategoryId||'';document.getElementById('sOwnerId').value=s.ownerId||'';document.getElementById('sTAr').value=s.termsAr;document.getElementById('sTEn').value=s.termsEn;document.getElementById('payStcNum').value=s.stcPay.number;document.getElementById('payStcName').value=s.stcPay.name;document.getElementById('payRajhiIban').value=s.alrajhi.iban;document.getElementById('payRajhiName').value=s.alrajhi.name;document.getElementById('payPaypalEmail').value=s.paypal.email;}catch(e){}}
 
 // ===== FORM ACTIONS =====
 async function saveAcc(){
   const tEn=document.getElementById('aTEn').value.trim(),tAr=document.getElementById('aTAr').value.trim(),price=document.getElementById('aPrice').value;
-  if(!tEn||!tAr||!price)return toast('Please complete all mandatory product properties','error');
+  if(!tEn||!price)return toast('Please enter at least Title and Price','error');
   try{
     await api('POST','/api/accounts',{titleEn:tEn,titleAr:tAr,game:document.getElementById('aGame').value,price:parseFloat(price),prestige:document.getElementById('aPres').value,stats:document.getElementById('aStats').value,warranty:parseInt(document.getElementById('aWarr').value),detailsEn:document.getElementById('aDEn').value,detailsAr:document.getElementById('aDAr').value,email:document.getElementById('aEmail').value,pass:document.getElementById('aPass').value,extra:document.getElementById('aExtra').value,images:curImgs});
-    toast('Account Listing posted directly to Discord Channel!','success');resetForm();loadPanelAcc();loadAccountsCh();
+    toast('Account posted to Discord channel!','success');resetForm();loadPanelAcc();loadAccountsCh();
   }catch(e){toast(e.message,'error')}
 }
 async function delAcc(id){try{await api('DELETE','/api/accounts/'+id);toast('Account deleted','success');loadPanelAcc();loadAccountsCh();}catch(e){}}
 async function deliverOrd(id){try{await api('POST','/api/orders/'+id+'/deliver');toast('Account credentials delivered!','success');loadPanelOrd();}catch(e){}}
-async function approvePay(id){try{await api('POST','/api/payments/'+id+'/approve');toast('Payment validated and stock auto-delivered!','success');loadPayments();loadPanelAcc();}catch(e){}}
-async function rejectPay(id){try{await api('POST','/api/payments/'+id+'/reject');toast('Invoice flagged as rejected. Notify customer.','error');loadPayments();}catch(e){}}
+async function approvePay(id){try{await api('POST','/api/payments/'+id+'/approve');toast('Payment approved! Account delivered in ticket. Ticket will auto-close.','success');loadPayments();loadPanelAcc();loadPanelTickets();loadTicketsCh();}catch(e){toast(e.message,'error')}}
+async function rejectPay(id){try{await api('POST','/api/payments/'+id+'/reject');toast('Payment rejected. Customer can re-upload.','warning');loadPayments();loadPanelTickets();loadTicketsCh();}catch(e){toast(e.message,'error')}}
 async function saveSett(){
   try{
-    await api('POST','/api/settings',{prefix:document.getElementById('sPrefix').value,currency:document.getElementById('sCur').value,accountsChannelId:document.getElementById('sAccCh').value,logChannelId:document.getElementById('sLogCh').value,termsAr:document.getElementById('sTAr').value,termsEn:document.getElementById('sTEn').value,stcPay:{number:document.getElementById('payStcNum').value,name:document.getElementById('payStcName').value},alrajhi:{iban:document.getElementById('payRajhiIban').value,name:document.getElementById('payRajhiName').value},paypal:{email:document.getElementById('payPaypalEmail').value}});
-    toast('Global environment parameters updated!','success');
+    await api('POST','/api/settings',{
+      prefix:document.getElementById('sPrefix').value,
+      currency:document.getElementById('sCur').value,
+      accountsChannelId:document.getElementById('sAccCh').value,
+      logChannelId:document.getElementById('sLogCh').value,
+      ticketCategoryId:document.getElementById('sTicketCat').value,
+      ownerId:document.getElementById('sOwnerId').value,
+      termsAr:document.getElementById('sTAr').value,
+      termsEn:document.getElementById('sTEn').value,
+      stcPay:{number:document.getElementById('payStcNum').value,name:document.getElementById('payStcName').value},
+      alrajhi:{iban:document.getElementById('payRajhiIban').value,name:document.getElementById('payRajhiName').value},
+      paypal:{email:document.getElementById('payPaypalEmail').value}
+    });
+    toast('All settings saved!','success');
   }catch(e){toast(e.message,'error')}
 }
-function resetForm(){['aTEn','aTAr','aPrice','aPres','aStats','aDEn','aDAr','aEmail','aPass','aExtra'].forEach(id=>document.getElementById(id).value='');curImgs=[];document.getElementById('imgThumbs').innerHTML='';}
-function loadAll(){loadAccountsCh();loadTermsCh();loadOrdersCh();loadStats()}
+function resetForm(){['aTEn','aTAr','aPrice','aPres','aStats','aDEn','aDAr','aEmail','aPass','aExtra'].forEach(id=>document.getElementById(id).value='');curImgs=[];document.getElementById('imgThumbs').innerHTML='';document.getElementById('imgPrev').style.display='block';}
+function doBulk(){const game=document.getElementById('bGame').value,price=document.getElementById('bPrice').value,creds=document.getElementById('bData').value.trim().split('\n').filter(l=>l.trim());if(!creds.length)return toast('No credentials','error');api('POST','/api/accounts/bulk',{game,price,warranty:document.getElementById('bWarr').value,credentials:creds}).then(r=>{toast(r.imported+' accounts imported','success');loadPanelAcc()}).catch(e=>toast(e.message,'error'))}
+function addPool(){const n=prompt('Pool name:');if(!n)return;const p=prompt('Price:','0');api('POST','/api/pools',{name:n,price:p}).then(()=>{toast('Pool created','success');loadPools()}).catch(e=>toast(e.message,'error'))}
+function clearLogs(){cfm('Clear Logs','Are you sure you want to clear all logs?',()=>{api('DELETE','/api/logs').then(()=>{toast('Logs cleared','success');loadPanelLogs()})})}
+
+function loadAll(){loadAccountsCh();loadTermsCh();loadOrdersCh();loadTicketsCh();loadStats()}
 loadAll();
 </script>
 </body>
