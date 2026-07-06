@@ -5,7 +5,7 @@
 
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
+const fs = require('fs');
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Partials } = require('discord.js');
 
 // ===== EXPRESS SERVER (Panel Backend) =====
@@ -13,7 +13,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 const fs = require('fs');
-const fs = require('fs');
+const path = require('path');
 
 // Try multiple possible locations for panel.html
 function findPanelHtml() {
