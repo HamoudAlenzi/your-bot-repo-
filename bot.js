@@ -183,27 +183,36 @@ async function postAccountToDiscord(channel, acc, allImages) {
     new ButtonBuilder().setCustomId('verify_' + acc.id).setLabel('التحقق / Verify').setStyle(ButtonStyle.Secondary).setEmoji('🔍')
   );
 
-  // Build attachments from base64 images
+  // Only attach the FIRST (cover) image inside the embed
   const files = [];
   let mainAttachmentName = null;
 
-  for (let i = 0; i < allImages.length; i++) {
-    const parsed = base64ToBuffer(allImages[i]);
+  if (allImages.length > 0) {
+    const parsed = base64ToBuffer(allImages[0]);
     if (parsed) {
-      const fileName = i === 0 ? 'cover.jpg' : `extra_${i}.jpg`;
+      const fileName = 'cover.jpg';
       files.push(new AttachmentBuilder(parsed.buffer, { name: fileName }));
-      if (i === 0) mainAttachmentName = fileName;
+      mainAttachmentName = fileName;
+      embed.setImage('attachment://' + mainAttachmentName);
     }
-  }
-
-  // Set embed image using attachment URL for the main image
-  if (mainAttachmentName) {
-    embed.setImage('attachment://' + mainAttachmentName);
   }
 
   const msg = await channel.send({ embeds: [embed], components: [row], files: files });
   acc.discordMessageIds.push(msg.id);
-  addLog('INFO', `Posted ${acc.titleEn} to Discord with ${files.length} attachment(s)`);
+
+  // Send extra images as separate messages (gallery style below the embed)
+  if (allImages.length > 1) {
+ for (let i = 1; i < allImages.length; i++) {
+      const parsed = base64ToBuffer(allImages[i]);
+      if (parsed) {
+        const attachment = new AttachmentBuilder(parsed.buffer, { name: `img_${i}.jpg` });
+        const imgMsg = await channel.send({ files: [attachment] });
+        acc.discordMessageIds.push(imgMsg.id);
+      }
+    }
+  }
+
+  addLog('INFO', `Posted ${acc.titleEn} to Discord — 1 cover + ${Math.max(0, allImages.length - 1)} extra image(s)`);
 }
 
 app.put('/api/accounts/:id', (req, res) => {
