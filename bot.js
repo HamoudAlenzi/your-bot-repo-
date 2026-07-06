@@ -3,10 +3,6 @@
 // Replace EVERYTHING in bot.js with this
 // =============================================
 
-// =============================================
-// ACC STORE BOT — Complete File
-// =============================================
-
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -16,68 +12,8 @@ const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-const fs = require('fs');
-const path = require('path');
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Try multiple possible locations for panel.html
-function findPanelHtml() {
-  const possiblePaths = [
-    path.join(__dirname, 'panel.html'),
-    path.join(__dirname, 'public', 'panel.html'),
-    path.join(__dirname, 'public', 'public', 'panel.html'),
-    path.join('/app', 'panel.html'),
-    path.join('/app', 'public', 'panel.html'),
-  ];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      console.log('Found panel.html at: ' + p);
-      return p;
-    }
-  }
-  console.log('panel.html NOT FOUND. Searched:');
-  possiblePaths.forEach(p => console.log('  - ' + p));
-  return null;
-}
-
-const panelPath = findPanelHtml();
-
-// Serve panel
-if (panelPath) {
-  app.get('/panel.html', (req, res) => {
-    res.sendFile(panelPath);
-  });
-  app.get('/', (req, res) => {
-    res.redirect('/panel.html');
-  });
-} else {
-  // Fallback: show what files exist
-  app.get('/', (req, res) => {
-    let html = '<h1>Debug: Files in server</h1><pre>';
-    try {
-      const files = fs.readdirSync(__dirname);
-      html += 'Files in __dirname (' + __dirname + '):\n';
-      files.forEach(f => {
-        const stat = fs.statSync(path.join(__dirname, f));
-        html += '  ' + f + ' (' + Math.round(stat.size/1024) + 'KB)\n';
-      });
-      // Check if public folder exists
-      const pubPath = path.join(__dirname, 'public');
-      if (fs.existsSync(pubPath)) {
-        html += '\nFiles in public/:\n';
-        fs.readdirSync(pubPath).forEach(f => {
-          const stat = fs.statSync(path.join(pubPath, f));
-          html += '  ' + f + ' (' + Math.round(stat.size/1024) + 'KB)\n';
-        });
-      } else {
-        html += '\npublic/ folder does NOT exist';
-      }
-    } catch(e) {
-      html += 'Error: ' + e.message;
-    }
-    html += '</pre>';
-    res.send(html);
-  });
-}
 // ===== DATA STORE =====
 let store = {
   accounts: [],
