@@ -12,8 +12,7 @@ const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use(express.static(__dirname));
-
+app.get('/', (req, res) => res.redirect('/panel.html'));
 // ===== DATA STORE =====
 let store = {
   accounts: [],
