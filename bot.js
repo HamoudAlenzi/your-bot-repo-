@@ -13,7 +13,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 const fs = require('fs');
-const path = require('path');
+const fs = require('fs');
 
 // Try multiple possible locations for panel.html
 function findPanelHtml() {
