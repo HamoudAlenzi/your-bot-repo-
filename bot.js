@@ -1,290 +1,255 @@
-// =============================================
-// ISIAM STORE BOT — Private Tickets, Auto-Delivery & Multi-Image Embeds
-// =============================================
+// ====================================================================
+// ISIAM STORE: ADVANCED DIGITAL E-COMMERCE ENGINE
+// ====================================================================
 
 const express = require('express');
+const session = require('express-session');
 const cors = require('cors');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const fs = require('fs');
-const {
-  Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder,
-  ButtonStyle, Partials, StringSelectMenuBuilder, AttachmentBuilder,
-  PermissionFlagsBits, ChannelType
+const { 
+  Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, 
+  ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ChannelType, PermissionFlagsBits 
 } = require('discord.js');
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use(express.static(__dirname));
+app.use(express.urlencoded({ extended: true }));
 
-function findPanelHtml() {
-  const paths = [
-    path.join(__dirname, 'panel.html'),
-    path.join(__dirname, 'public', 'panel.html'),
-  ];
-  for (const p of paths) {
-    if (fs.existsSync(p)) return p;
-  }
-  return null;
-}
-const panelPath = findPanelHtml();
-if (panelPath) {
-  app.get('/panel.html', (req, res) => res.sendFile(panelPath));
-  app.get('/', (req, res) => res.redirect('/panel.html'));
-}
+// Panel Security Setup
+app.use(session({
+  secret: 'isiam-super-secret-key-2026',
+  resave: false,
+  saveUninitialized: true
+}));
 
-// Data Store
-let store = {
-  accounts: [], orders: [], customers: [], pools: [],
-  paymentRequests: [], tickets: [], logs: [],
-  settings: {
-    prefix: '!', currency: '$', accountsChannelId: '', ticketCategoryId: '', logChannelId: '', ownerId: '',
-    termsAr: 'الشروط العامة\n▪️ يتم تسليم الحساب فور تأكيد الدفع\n▪️ الضمان يبدأ من تاريخ الشراء',
-    termsEn: 'General Terms\n▪️ Account delivered immediately after payment\n▪️ Warranty starts from purchase date',
-    stcPay: { number: '05XXXXXXXX', name: '' },
-    alrajhi: { iban: 'SA0000000000000000000', name: '' },
-    paypal: { email: 'pay@example.com', name: '' }
-  },
-  nextId: 1
+// ====================================================================
+// DATABASE: PERSISTENT SQLITE FOR RAILWAY
+// Note: In Railway, mount a Volume to /app/data to prevent wipes!
+// ====================================================================
+const dbPath = process.env.RAILWAY_VOLUME_MOUNT_PATH 
+  ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'store.db') 
+  : './store.db';
+
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) console.error("Database Error:", err.message);
+  else console.log("Connected to persistent SQLite database.");
+});
+
+// Initialize Tables
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY, title TEXT, price REAL, details TEXT, images TEXT, type TEXT)`);
+  db.run(`CREATE TABLE IF NOT EXISTS stock_pool (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id TEXT, payload TEXT, status TEXT)`);
+  db.run(`CREATE TABLE IF NOT EXISTS coupons (code TEXT PRIMARY KEY, discount_pct INTEGER, max_uses INTEGER, used INTEGER)`);
+  db.run(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`);
+});
+
+// Helper functions for DB
+const runDb = (sql, params = []) => new Promise((res, rej) => db.run(sql, params, function(err) { if (err) rej(err); else res(this); }));
+const getDb = (sql, params = []) => new Promise((res, rej) => db.get(sql, params, (err, row) => { if (err) rej(err); else res(row); }));
+const allDb = (sql, params = []) => new Promise((res, rej) => db.all(sql, params, (err, rows) => { if (err) rej(err); else res(rows); }));
+
+// ====================================================================
+// EXPRESS API & DASHBOARD SECURITY
+// ====================================================================
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'isiamadmin123';
+
+const requireAuth = (req, res, next) => {
+  if (req.session.loggedIn) return next();
+  res.status(401).json({ error: 'Unauthorized. Please log in.' });
 };
 
-function genId() { return store.nextId++; }
-function addLog(level, msg) {
-  store.logs.unshift({ time: new Date().toTimeString().slice(0, 8), level, msg });
-  if (store.logs.length > 500) store.logs.length = 500;
-}
-
-function base64ToBuffer(dataUri) {
-  const matches = dataUri.match(/^data:image\/(\w+);base64,(.+)$/);
-  if (!matches) return null;
-  return { buffer: Buffer.from(matches[2], 'base64'), ext: matches[1] === 'jpeg' ? 'jpg' : matches[1] };
-}
-
-function sendLogToDiscord(msg) {
-  const chId = store.settings.logChannelId;
-  if (chId && client.isReady()) {
-    const ch = client.channels.cache.get(chId);
-    if (ch) ch.send(msg).catch(() => {});
+app.post('/api/login', (req, res) => {
+  if (req.body.password === ADMIN_PASSWORD) {
+    req.session.loggedIn = true;
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ error: 'Invalid password' });
   }
-}
-
-// API Routes
-app.get('/api/stats', (req, res) => {
-  res.json({
-    totalAccounts: store.accounts.length,
-    available: store.accounts.filter(a => a.status === 'available').length,
-    sold: store.accounts.filter(a => a.status === 'sold').length,
-    totalOrders: store.orders.length,
-    pendingPayments: store.paymentRequests.filter(p => p.status === 'Pending' || p.status === 'Waiting Review').length,
-    openTickets: store.tickets.filter(t => t.status !== 'closed').length
-  });
 });
 
-app.get('/api/accounts', (req, res) => res.json(store.accounts));
+// Get Products
+app.get('/api/products', requireAuth, async (req, res) => {
+  const products = await allDb('SELECT * FROM products');
+  res.json(products);
+});
 
-app.post('/api/accounts', (req, res) => {
-  try {
-    const { titleEn, titleAr, game, price, prestige, stats, warranty, detailsEn, detailsAr, email, pass, extra, images } = req.body;
-    const allImages = images && Array.isArray(images) ? images : [];
-    
-    const acc = {
-      id: genId(), titleEn, titleAr: titleAr || '', game: game || 'Other',
-      price: parseFloat(price), prestige: prestige || '', stats: stats || '',
-      warranty: parseInt(warranty) || 0, detailsEn: detailsEn || '', detailsAr: detailsAr || '',
-      email: email || '', pass: pass || '', extra: extra || '', images: allImages,
-      status: 'available', discordMessageIds: [], createdAt: new Date().toISOString()
-    };
+// Create Product & Post to Discord
+app.post('/api/products', requireAuth, async (req, res) => {
+  const { title, price, details, images, type, stockPayloads } = req.body;
+  const id = 'PROD-' + Date.now();
+  
+  await runDb(`INSERT INTO products (id, title, price, details, images, type) VALUES (?, ?, ?, ?, ?, ?)`, 
+    [id, title, parseFloat(price), details, JSON.stringify(images), type]);
 
-    store.accounts.unshift(acc);
-    const channelId = store.settings.accountsChannelId;
-
-    if (channelId && client.isReady()) {
-      const channel = client.channels.cache.get(channelId);
-      if (channel) postAccountToDiscord(channel, acc, allImages);
+  // If digital keys are provided, load them into the auto-delivery pool
+  if (stockPayloads && stockPayloads.length > 0) {
+    for (const payload of stockPayloads) {
+      await runDb(`INSERT INTO stock_pool (product_id, payload, status) VALUES (?, ?, 'available')`, [id, payload]);
     }
-    res.json(acc);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+  }
 
-async function postAccountToDiscord(channel, acc, allImages) {
-  const embeds = [];
-  const files = [];
-  const dummyUrl = 'https://isiam-store.app'; // Required to merge multiple images into one embed box
+  // Discord Post Logic (Multi-Image Workaround)
+  const settings = await allDb('SELECT * FROM settings');
+  const config = settings.reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
+  
+  if (config.accountsChannelId && client.isReady()) {
+    try {
+      const channel = await client.channels.fetch(config.accountsChannelId);
+      const embeds = [];
+      const dummyUrl = 'https://isiam-store.app'; // Critical: Same URL groups images together
 
-  const mainEmbed = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle(`🎮 ${acc.titleEn}`)
-    .setURL(dummyUrl)
-    .addFields(
-      { name: 'الاسم / Title', value: acc.titleAr || acc.titleEn, inline: false },
-      { name: 'Rank / Level', value: acc.prestige || '-', inline: true },
-      { name: 'Total Stats', value: acc.stats || '-', inline: true },
-      { name: 'Warranty', value: acc.warranty > 0 ? acc.warranty + ' Days' : 'None', inline: true },
-      { name: 'Details', value: acc.detailsEn || '-', inline: false },
-      { name: 'Price', value: `${store.settings.currency}${acc.price.toFixed(2)}`, inline: false }
-    )
-    .setFooter({ text: `isiam store • Product ID: ${acc.id}` });
+      const mainEmbed = new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle(`🎮 ${title}`)
+        .setURL(dummyUrl)
+        .addFields(
+          { name: '💰 Price / السعر', value: `${price} SAR`, inline: true },
+          { name: '📋 Details', value: details || 'No details provided.', inline: false }
+        )
+        .setFooter({ text: `isiam store • ID: ${id}` });
 
-  // Handle Multiple Images in ONE embed box using the Discord URL trick
-  for (let i = 0; i < allImages.length; i++) {
-    const parsed = base64ToBuffer(allImages[i]);
-    if (parsed) {
-      const fileName = `img_${i}.jpg`;
-      files.push(new AttachmentBuilder(parsed.buffer, { name: fileName }));
-      if (i === 0) {
-        mainEmbed.setImage(`attachment://${fileName}`);
+      if (images && images.length > 0) {
+        mainEmbed.setImage(images[0]);
         embeds.push(mainEmbed);
+        // Append up to 3 more images to the same embed gallery
+        for (let i = 1; i < images.length && i < 4; i++) {
+          embeds.push(new EmbedBuilder().setURL(dummyUrl).setImage(images[i]));
+        }
       } else {
-        const extraEmbed = new EmbedBuilder().setURL(dummyUrl).setImage(`attachment://${fileName}`);
-        embeds.push(extraEmbed);
+        embeds.push(mainEmbed);
       }
-    }
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`buy_${id}`).setLabel('شراء / Buy Now').setStyle(ButtonStyle.Success).setEmoji('🛒')
+      );
+
+      await channel.send({ embeds, components: [row] });
+    } catch (err) { console.error("Failed to post:", err); }
   }
-
-  if (embeds.length === 0) embeds.push(mainEmbed);
-
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('buy_' + acc.id).setLabel('شراء / Buy Now').setStyle(ButtonStyle.Success).setEmoji('🛒'),
-    new ButtonBuilder().setCustomId('verify_' + acc.id).setLabel('Verify').setStyle(ButtonStyle.Secondary)
-  );
-
-  const msg = await channel.send({ embeds, components: [row], files });
-  acc.discordMessageIds.push(msg.id);
-}
-
-app.delete('/api/accounts/:id', (req, res) => {
-  const acc = store.accounts.find(a => a.id === parseInt(req.params.id));
-  if (!acc) return res.status(404).json({ error: 'Not found' });
-  if (acc.discordMessageIds.length && client.isReady()) {
-    const channel = client.channels.cache.get(store.settings.accountsChannelId);
-    if (channel) acc.discordMessageIds.forEach(mid => channel.messages.delete(mid).catch(() => {}));
-  }
-  store.accounts = store.accounts.filter(a => a.id !== acc.id);
   res.json({ success: true });
 });
 
-app.get('/api/orders', (req, res) => res.json(store.orders));
-app.get('/api/payments', (req, res) => res.json(store.paymentRequests));
-app.get('/api/tickets', (req, res) => res.json(store.tickets));
-app.get('/api/customers', (req, res) => res.json(store.customers));
-app.get('/api/settings', (req, res) => res.json(store.settings));
-app.post('/api/settings', (req, res) => Object.assign(store.settings, req.body) && res.json(store.settings));
-
-// Approve Payment & Auto-Close Flow
-app.post('/api/payments/:id/approve', async (req, res) => {
-  try {
-    const pr = store.paymentRequests.find(p => p.id === req.params.id);
-    if (!pr) return res.status(404).json({ error: 'Request missing' });
-    pr.status = 'Approved';
-
-    const acc = store.accounts.find(a => a.id === pr.accountId);
-    if (acc) {
-      acc.status = 'sold';
-      store.orders.unshift({ id: 'ORD-' + genId(), cust: pr.userName, item: pr.accountTitle, amount: pr.amount, status: 'Delivered', paymentMethod: pr.method, date: new Date().toISOString() });
-
-      const ticket = store.tickets.find(t => t.paymentId === pr.id);
-      if (ticket && ticket.channelId && client.isReady()) {
-        const ticketChannel = client.channels.cache.get(ticket.channelId);
-        if (ticketChannel) {
-          // Give the account details
-          await ticketChannel.send({
-            content: `✅ **تم تأكيد الدفع بنجاح! / Payment Confirmed!**\n\n**${pr.accountTitle}**\n📧 Email: \`${acc.email}\`\n🔑 Password: \`${acc.pass}\`\n\n⏳ *This ticket will auto-close in 10 seconds...*`
-          });
-          ticket.status = 'closed';
-          
-          // Auto close itself
-          setTimeout(async () => {
-            try { await ticketChannel.delete('Purchase completed'); } catch(e){}
-          }, 10000);
-        }
-      }
-    }
-    res.json(pr);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+// Broadcast Announcer
+app.post('/api/broadcast', requireAuth, async (req, res) => {
+  const { channelId, messageAr, messageEn, image } = req.body;
+  if (client.isReady()) {
+    try {
+      const channel = await client.channels.fetch(channelId);
+      const embed = new EmbedBuilder()
+        .setColor(0xffd700)
+        .setTitle('📢 Store Announcement / إعلان المتجر')
+        .setDescription(`**${messageAr}**\n\n*${messageEn}*`)
+        .setTimestamp();
+      if (image) embed.setImage(image);
+      
+      await channel.send({ embeds: [embed] });
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  }
 });
 
-// Discord Bot Intercepts
+// ====================================================================
+// DISCORD BOT BOT INTERACTION WORKFLOW
+// ====================================================================
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 client.on('interactionCreate', async (interaction) => {
+  // 1. Checkout Initiation
   if (interaction.isButton() && interaction.customId.startsWith('buy_')) {
-    const accId = parseInt(interaction.customId.split('_')[1]);
-    const acc = store.accounts.find(a => a.id === accId);
-    if (!acc || acc.status !== 'available') return interaction.reply({ content: '❌ Out of stock.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    
+    const productId = interaction.customId.replace('buy_', '');
+    const product = await getDb('SELECT * FROM products WHERE id = ?', [productId]);
+    
+    // Check auto-delivery stock pool
+    const availableStock = await getDb(`SELECT count(*) as count FROM stock_pool WHERE product_id = ? AND status = 'available'`, [productId]);
+
+    if (!product || (product.type === 'digital_key' && availableStock.count === 0)) {
+      return interaction.editReply({ content: '❌ Out of stock / نفدت الكمية.' });
+    }
 
     const guild = interaction.guild;
-    const category = guild.channels.cache.get(store.settings.ticketCategoryId);
-    
-    // Create Private Ticket
     const ticketChannel = await guild.channels.create({
-      name: `buy-${interaction.user.username}`,
+      name: `🛒ـ${interaction.user.username}`,
       type: ChannelType.GuildText,
-      parent: category,
       permissionOverwrites: [
         { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] }
+        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] },
+        { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks] }
       ]
     });
 
-    const ticketId = 'TKT-' + genId();
-    store.tickets.unshift({ id: ticketId, userId: interaction.user.id, userName: interaction.user.username, accountId: accId, accountTitle: acc.titleEn, amount: acc.price, channelId: ticketChannel.id, status: 'open' });
-    acc.status = 'reserved';
+    const entryEmbed = new EmbedBuilder()
+      .setColor(0x23a55a)
+      .setTitle('Secure Checkout / الدفع الآمن')
+      .setDescription(`مرحباً **${interaction.user.username}**.\n**Product:** ${product.title}\n**Price:** ${product.price} SAR`);
 
-    // Welcome embed inside private ticket using the specified local image
-    const welcomeEmbed = new EmbedBuilder()
-      .setColor(0x5865f2)
-      .setTitle('🛒 isiam store - Purchase System')
-      .setDescription(`Welcome **${interaction.user.username}**!\n\n**Product:** ${acc.titleEn}\n**Price:** ${store.settings.currency}${acc.price}\n\nPlease select your payment method below.`)
-      .setThumbnail('attachment://store_logo.png');
-
-    const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId(`paymethod_${accId}_${ticketId}`)
-      .setPlaceholder('Choose payment method')
-      .addOptions(
+    const paymentDropdown = new StringSelectMenuBuilder()
+      .setCustomId(`pay_${product.id}`)
+      .setPlaceholder('💳 Select Payment / اختر طريقة الدفع')
+      .addOptions([
+        { label: 'Al Rajhi Bank', value: 'alrajhi', emoji: '🏦' },
         { label: 'STC Pay', value: 'stcpay', emoji: '📱' },
-        { label: 'AlRajhi Bank', value: 'alrajhi', emoji: '🏦' }
+        { label: 'PayPal', value: 'paypal', emoji: '💳' },
+        { label: 'Crypto (USDT)', value: 'crypto', emoji: '🪙' }
+      ]);
+
+    const row = new ActionRowBuilder().addComponents(paymentDropdown);
+    const couponBtn = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`coupon_${product.id}`).setLabel('إدخال كوبون / Enter Coupon').setStyle(ButtonStyle.Secondary)
+    );
+
+    await ticketChannel.send({ content: `${interaction.user} | 🔔`, embeds: [entryEmbed], components: [row, couponBtn] });
+    return interaction.editReply({ content: `✅ Ticket created: ${ticketChannel}` });
+  }
+
+  // 2. Admin Approval & Auto-Delivery from Pool
+  if (interaction.isButton() && interaction.customId.startsWith('approve_buy_')) {
+    await interaction.deferReply();
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) return interaction.editReply({ content: '❌ Admins only.' });
+
+    const productId = interaction.customId.replace('approve_buy_', '');
+    const product = await getDb('SELECT * FROM products WHERE id = ?', [productId]);
+    
+    let deliveryData = "Data will be provided manually by admin.";
+
+    if (product.type === 'digital_key') {
+      const stock = await getDb(`SELECT id, payload FROM stock_pool WHERE product_id = ? AND status = 'available' LIMIT 1`, [productId]);
+      if (stock) {
+        await runDb(`UPDATE stock_pool SET status = 'sold' WHERE id = ?`, [stock.id]);
+        deliveryData = stock.payload;
+      } else {
+        return interaction.editReply('❌ Critical Error: Stock pool empty during delivery.');
+      }
+    }
+
+    const deliveryEmbed = new EmbedBuilder()
+      .setColor(0x23a55a)
+      .setTitle('🎉 Order Delivered / تم التسليم')
+      .setDescription(`**بياناتك / Your Data:**\n\`\`\`${deliveryData}\`\`\``);
+
+    await interaction.channel.send({ content: `📦 **تسليم فوري / Instant Delivery:**`, embeds: [deliveryEmbed] });
+    await interaction.editReply({ content: '✅ Delivered. Ticket closing in 10s.' });
+
+    // Request Rating in DM before closing
+    try {
+      const ratingRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`rate_5_${productId}`).setLabel('⭐⭐⭐⭐⭐').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`rate_1_${productId}`).setLabel('⭐').setStyle(ButtonStyle.Danger)
       );
+      await interaction.user.send({ 
+        content: `شكراً لشرائك من **isiam store**! كيف تقيم تجربتك؟\nThanks for buying **${product.title}**! Please rate us.`, 
+        components: [ratingRow] 
+      });
+    } catch (e) { /* User DMs off */ }
 
-    const logoFile = new AttachmentBuilder('0e3f41e7-3aa3-40c4-9a1d-e3d05cebe709-profile_image-70x70.png', { name: 'store_logo.png' });
-
-    await ticketChannel.send({
-      content: `<@${interaction.user.id}>`,
-      embeds: [welcomeEmbed],
-      files: [logoFile],
-      components: [new ActionRowBuilder().addComponents(selectMenu)]
-    });
-
-    return interaction.reply({ content: `🎫 Private ticket created: <#${ticketChannel.id}>`, ephemeral: true });
-  }
-
-  // Payment Selection
-  if (interaction.isStringSelectMenu() && interaction.customId.startsWith('paymethod_')) {
-    const parts = interaction.customId.split('_');
-    const acc = store.accounts.find(a => a.id === parseInt(parts[1]));
-    const ticket = store.tickets.find(t => t.id === parts[2]);
-    const method = interaction.values[0];
-
-    const payId = 'PAY-' + genId();
-    store.paymentRequests.unshift({ id: payId, userId: interaction.user.id, userName: interaction.user.username, accountId: acc.id, accountTitle: acc.titleEn, amount: acc.price, method: method.toUpperCase(), status: 'Pending' });
-    ticket.paymentId = payId; ticket.status = 'waiting_payment';
-
-    let info = method === 'stcpay' ? `📱 **STC Pay:** ${store.settings.stcPay.number}` : `🏦 **AlRajhi:** ${store.settings.alrajhi.iban}`;
-    await interaction.reply(`💳 **Payment Instructions:**\nAmount: $${acc.price}\n${info}\n\n⚠️ **Next Step:** Transfer the amount, then **upload a picture of the receipt here.**`);
+    setTimeout(async () => { try { await interaction.channel.delete(); } catch(e){} }, 10000);
   }
 });
 
-// Image Receipt interception
-client.on('messageCreate', async (message) => {
-  const ticket = store.tickets.find(t => t.channelId === message.channel.id && t.status === 'waiting_payment');
-  if (ticket && message.attachments.size > 0) {
-    const pr = store.paymentRequests.find(p => p.id === ticket.paymentId);
-    pr.status = 'Waiting Review'; ticket.status = 'waiting_review';
-    message.reply(`✅ **Receipt received!** The admin is reviewing it. Your account will be delivered right here once approved.`);
-  }
-});
-
-app.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log('isiam store running'));
+app.listen(process.env.PORT || 3000, () => console.log('Store running'));
 client.login(process.env.DISCORD_TOKEN);
