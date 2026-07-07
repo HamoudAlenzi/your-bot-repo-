@@ -14,7 +14,7 @@ const {
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-const DATA_FILE = path.join(__dirname, 'store_db.json');
+app.use(express.static(__dirname));
 
 // Core Database State with local persistent backup
 let store = {
