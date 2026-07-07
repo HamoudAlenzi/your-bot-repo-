@@ -1230,46 +1230,36 @@ async function postBoostingToDiscord(channel, service) {
     )
     .addFields(
       { name: '🎮 Game', value: service.game, inline: true },
-      { name: '⚙️ Service', value: service.serviceType.replace('_',' '), inline: true },
       { name: '⏱️ ETA', value: service.eta, inline: true }
     );
   let startingPrice = service.price;
+  // Clean embed — don't list all ranks/guns, just show starting price + hint to click Order
   if (service.serviceType === 'rank' && service.rankList && service.rankList.length >= 2 && service.pricePerRank > 0) {
     startingPrice = service.pricePerRank;
-    const expanded = getExpandedRanks(service);
-    // Show ranks with emojis, grouped by base rank
-    const rankSummary = service.rankList.map(r => (r.emoji ? r.emoji + ' ' : '') + '`' + r.name + '`').join(' → ');
-    const tierInfo = (service.rankTiers || 3) + ' tiers each (I, II, III)' + (service.rankList.length > 0 ? ' • ' + service.rankList[service.rankList.length-1].name + ' is single-tier' : '');
-    mainEmbed.addFields({ name: '📈 Rank Boost — Customer Choice', value: 'Available ranks: ' + rankSummary + '\n📊 ' + tierInfo + '\n💰 Price: `' + cur + service.pricePerRank + ' per tier`', inline: false });
+    mainEmbed.addFields({ name: '📈 الخدمة', value: 'بوست رتبة — اختر رتبتك الحالية والمستهدفة', inline: false });
   } else if (service.serviceType === 'rank' && service.fromRank && service.toRank) {
     mainEmbed.addFields({ name: '📈 Rank Boost', value: '`' + (service.fromRank||'-') + '` → `' + (service.toRank||'-') + '`', inline: false });
   }
   if (service.serviceType === 'prestige' && service.maxPrestige > 0 && service.pricePerPrestige > 0) {
     startingPrice = service.pricePerPrestige;
-    const pem = service.prestigeEmoji || '🎖️';
-    mainEmbed.addFields({ name: '🎖️ Prestige — Customer Choice', value: 'Available levels: ' + pem + ' `1` to `' + service.maxPrestige + '`\n💰 Price: `' + cur + service.pricePerPrestige + ' × target level`', inline: false });
+    mainEmbed.addFields({ name: '🎖️ الخدمة', value: 'بوست بريستيج — اختر المستوى المستهدف (1-' + service.maxPrestige + ')', inline: false });
   } else if (service.serviceType === 'prestige' && service.prestigeLevel) {
     mainEmbed.addFields({ name: '🎖️ Prestige Level', value: '```fix\n' + service.prestigeLevel + '```', inline: false });
   }
   if (service.serviceType === 'gun_level' && service.gunList && service.gunList.length > 0) {
     const cheapest = Math.min(...service.gunList.map(g => g.pricePerLevel || 0));
     if (cheapest > 0) startingPrice = cheapest;
-    // If categories exist, show category summary; else show flat gun list
     const categories = getGunCategories(service);
-    let gunsText;
     if (categories.length > 1) {
-      gunsText = categories.map(c => (c.emoji ? c.emoji + ' ' : '') + '`' + c.name + '` (' + c.guns.length + ' أسلحة)').join(' • ');
-      mainEmbed.addFields({ name: '🔫 Gun Level — اختر الفئة ثم السلاح', value: 'الفئات المتاحة: ' + gunsText + '\n🔫 إجمالي الأسلحة: `' + service.gunList.length + '`\n📊 الحد الأقصى للمستوى: `' + service.maxGunLevel + '`', inline: false });
+      mainEmbed.addFields({ name: '🔫 الخدمة', value: 'بوست مستويات أسلحة — اختر الفئة ثم السلاح (' + categories.length + ' فئات، ' + service.gunList.length + ' سلاح)', inline: false });
     } else {
-      gunsText = service.gunList.slice(0, 20).map(g => (g.emoji ? g.emoji + ' ' : '') + '`' + g.name + '`').join(', ');
-      mainEmbed.addFields({ name: '🔫 Gun Level — Customer Choice', value: 'Available guns: ' + gunsText + (service.gunList.length > 20 ? '\n*(+' + (service.gunList.length - 20) + ' more)*' : '') + '\n📊 Max level: `' + service.maxGunLevel + '`', inline: false });
+      mainEmbed.addFields({ name: '🔫 الخدمة', value: 'بوست مستويات أسلحة — ' + service.gunList.length + ' سلاح متاح', inline: false });
     }
   } else if (service.serviceType === 'gun_level' && service.gunName) {
     mainEmbed.addFields({ name: '🔫 Gun', value: service.gunName, inline: true });
-    mainEmbed.addFields({ name: '📊 Level', value: (service.fromLevel||'-') + ' → ' + (service.toLevel||'-'), inline: true });
   }
-  mainEmbed.addFields({ name: '💰 Starting from', value: '```fix\n' + cur + startingPrice.toFixed(2) + '```', inline: false });
-  mainEmbed.setFooter({ text: store.settings.storeName + ' • Boosting Service • ID: ' + service.id + ' • Click Order Boost to customize' });
+  mainEmbed.addFields({ name: '💰 يبدأ من', value: '```fix\n' + cur + startingPrice.toFixed(2) + '```', inline: false });
+  mainEmbed.setFooter({ text: store.settings.storeName + ' • اضغط اطلب الآن للتخصيص' });
   mainEmbed.setTimestamp();
 
   const files = [];
@@ -2294,7 +2284,7 @@ client.on('interactionCreate', async (interaction) => {
       const boost = store.boostingServices.find(s => s.id === boostId);
       if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
       const catIdx = parseInt(interaction.values[0]);
-      await interaction.deferUpdate();
+      // Use update() to replace the category select with the gun select (no defer needed)
       return await showGunSelectForBoost(interaction, boost, catIdx);
     }
 
@@ -2663,7 +2653,7 @@ async function showGunSelectForBoost(interaction, boost, catIdx) {
   const options = cat.guns.slice(0, 25).map((g, i) => ({
     label: g.name.slice(0, 100),
     value: String(i),
-    description: cur + (g.pricePerLevel || 15) + ' لكل سلاح',
+    description: cur + (g.pricePerLevel || 15) + ' لكل مستوى',
     emoji: g.emoji || undefined
   }));
   const select = new StringSelectMenuBuilder()
@@ -2675,17 +2665,15 @@ async function showGunSelectForBoost(interaction, boost, catIdx) {
     .setColor(brandColor)
     .setTitle('🚀 ' + boost.titleEn)
     .setDescription(
-      `**اختر السلاح من فئة: ${catName}**\n\n` +
+      `**الفئة: ${catName}**\n\n` +
       `🔫 الأسلحة المتاحة: ${cat.guns.length}\n` +
-      `💰 السعر: \`${cur}${cat.guns[0]?.pricePerLevel || 15} لكل سلاح\`\n` +
+      `💰 السعر: \`${cur}${cat.guns[0]?.pricePerLevel || 15} لكل مستوى\`\n` +
       `📊 الحد الأقصى للمستوى: ${boost.maxGunLevel}\n\n` +
-      `اختر السلاح الذي تريد رفع مستواه 👇`
+      `اختر السلاح 👇`
     )
     .setFooter({ text: store.settings.storeName + ' • الخطوة 2 من 3' });
-  if (interaction.deferred || interaction.replied) {
-    return interaction.editReply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] }).catch(()=>{});
-  }
-  return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(()=>{});
+  // Use update() to replace the previous select menu (works for select menu interactions)
+  return interaction.update({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] }).catch(()=>{});
 }
 
 // Helper: show camo multi-select menu (called from ordercamo_ and camogun_ handlers)
