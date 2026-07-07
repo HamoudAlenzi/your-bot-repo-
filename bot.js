@@ -1084,7 +1084,7 @@ app.post('/api/boosting', async (req, res) => {
       maxPrestige: parseInt(maxPrestige) || 0,
       pricePerPrestige: parseFloat(pricePerPrestige) || 0,
       prestigeEmoji: prestigeEmoji || '🎖️',
-      gunList: Array.isArray(gunList) ? gunList.map(parseGunEntry) : (gunList ? gunList.map(parseGunEntry) : []),
+      gunList: Array.isArray(gunList) ? gunList.map(parseGunEntry) : (gunList ? parseGunListInput(gunList) : []),
       maxGunLevel: parseInt(maxGunLevel) || 100,
       status: 'active',
       createdAt: new Date().toISOString(), discordMessageIds: []
@@ -1136,6 +1136,61 @@ function parseGunEntry(line) {
   const pricePerLevel = parseFloat(parts[1]) || 0;
   return { name, emoji, pricePerLevel };
 }
+
+// Parse gun list input — supports 2 formats:
+// Format 1 (flat): ['🔫 M4A1:0.50', '🔫 AK-47:0.50']  → gunList = [{name, emoji, pricePerLevel}, ...]
+// Format 2 (categorized): ['# Assault Rifles', '🔫 M4A1:0.50', '🔫 AK-47', '# SMGs', '💨 MP5:0.40']
+//   → gunCategories = [{name:'Assault Rifles', emoji:'🔫', guns:[{name,emoji,pricePerLevel},...]}, ...]
+// Lines starting with '#' or '##' are category headers (optional emoji after #)
+function parseGunListInput(input) {
+  if (typeof input === 'string') input = input.split('\n');
+  if (!Array.isArray(input)) return [];
+  const result = []; // flat gunList (backwards compat)
+  const categories = []; // gunCategories (new)
+  let currentCat = null;
+  for (let line of input) {
+    if (typeof line === 'object') { result.push(line); continue; }
+    line = String(line).trim();
+    if (!line) continue;
+    // Category header: '# Assault Rifles' or '## 🔫 Assault Rifles' or '## Assault Rifles'
+    const catMatch = line.match(/^#+\s*((<:\w+:\d+>|\p{Extended_Pictographic}|\p{Emoji})(\uFE0F)?(?:\u200D(?:\p{Extended_Pictographic}|\p{Emoji}))*\s*)?(.+)$/u);
+    if (catMatch && line.startsWith('#')) {
+      const emojiPart = catMatch[2] || '';
+      const catName = catMatch[4].trim();
+      currentCat = { name: catName, emoji: emojiPart.trim(), guns: [] };
+      categories.push(currentCat);
+      continue;
+    }
+    // Regular gun line
+    const gun = parseGunEntry(line);
+    result.push(gun);
+    if (currentCat) currentCat.guns.push(gun);
+    else {
+      // Gun without category — create an "Other" category
+      const otherCat = categories.find(c => c.name === 'Other');
+      if (otherCat) otherCat.guns.push(gun);
+      else categories.push({ name: 'Other', emoji: '🔫', guns: [gun] });
+    }
+  }
+  // Return a special array with __categories property
+  // Backwards-compat: result is still a flat array of guns
+  // But if categories were detected, attach them as result.__categories
+  if (categories.length > 0 && categories.some(c => c.guns.length > 0)) {
+    Object.defineProperty(result, '__categories', { value: categories, enumerable: false, writable: true });
+  }
+  return result;
+}
+
+// Get gun categories from a boosting/camo service (returns [] if flat list)
+function getGunCategories(service) {
+  if (service.gunList && service.gunList.__categories) return service.gunList.__categories;
+  // Fallback: build a single "All Guns" category from flat list
+  if (service.gunList && service.gunList.length > 0) {
+    return [{ name: 'All Guns', emoji: '🔫', guns: service.gunList }];
+  }
+  return [];
+}
+
 
 // Expand rankList into flat list of tiers with emojis
 // e.g. rankList=[Bronze,Silver,Gold], rankTiers=3 → [Bronze I, Bronze II, Bronze III, Silver I, Silver II, Silver III, Gold I, Gold II, Gold III]
@@ -1199,8 +1254,16 @@ async function postBoostingToDiscord(channel, service) {
   if (service.serviceType === 'gun_level' && service.gunList && service.gunList.length > 0) {
     const cheapest = Math.min(...service.gunList.map(g => g.pricePerLevel || 0));
     if (cheapest > 0) startingPrice = cheapest;
-    const gunsText = service.gunList.map(g => (g.emoji ? g.emoji + ' ' : '') + '`' + g.name + '` (' + cur + (g.pricePerLevel||0) + '/lvl)').join(', ');
-    mainEmbed.addFields({ name: '🔫 Gun Level — Customer Choice', value: 'Available guns: ' + gunsText + '\n📊 Max level: `' + service.maxGunLevel + '`', inline: false });
+    // If categories exist, show category summary; else show flat gun list
+    const categories = getGunCategories(service);
+    let gunsText;
+    if (categories.length > 1) {
+      gunsText = categories.map(c => (c.emoji ? c.emoji + ' ' : '') + '`' + c.name + '` (' + c.guns.length + ' أسلحة)').join(' • ');
+      mainEmbed.addFields({ name: '🔫 Gun Level — اختر الفئة ثم السلاح', value: 'الفئات المتاحة: ' + gunsText + '\n🔫 إجمالي الأسلحة: `' + service.gunList.length + '`\n📊 الحد الأقصى للمستوى: `' + service.maxGunLevel + '`', inline: false });
+    } else {
+      gunsText = service.gunList.slice(0, 20).map(g => (g.emoji ? g.emoji + ' ' : '') + '`' + g.name + '`').join(', ');
+      mainEmbed.addFields({ name: '🔫 Gun Level — Customer Choice', value: 'Available guns: ' + gunsText + (service.gunList.length > 20 ? '\n*(+' + (service.gunList.length - 20) + ' more)*' : '') + '\n📊 Max level: `' + service.maxGunLevel + '`', inline: false });
+    }
   } else if (service.serviceType === 'gun_level' && service.gunName) {
     mainEmbed.addFields({ name: '🔫 Gun', value: service.gunName, inline: true });
     mainEmbed.addFields({ name: '📊 Level', value: (service.fromLevel||'-') + ' → ' + (service.toLevel||'-'), inline: true });
@@ -1348,7 +1411,7 @@ app.post('/api/camo', async (req, res) => {
       // If price is 0/empty, uses pricePerCamo as default
       camoList: Array.isArray(camoList) ? camoList.map(parseCamoEntry) : (camoList ? String(camoList).split('\n').map(s=>s.trim()).filter(Boolean).map(parseCamoEntry) : []),
       // gunList: array of { name, emoji } — optional, if empty customer just picks camos
-      gunList: Array.isArray(gunList) ? gunList.map(parseGunEntry) : (gunList ? gunList.map(parseGunEntry) : []),
+      gunList: Array.isArray(gunList) ? gunList.map(parseGunEntry) : (gunList ? parseGunListInput(gunList) : []),
       eta: eta || '24-72 hours',
       descriptionEn: descriptionEn || '', descriptionAr: descriptionAr || '',
       images: Array.isArray(images) ? images : [],
@@ -2015,13 +2078,36 @@ client.on('interactionCreate', async (interaction) => {
         const embed = new EmbedBuilder().setColor(brandColor).setTitle('🚀 ' + boost.titleEn).setDescription(`**Choose your target prestige level.**\n💰 Price: \`${cur}${boost.pricePerPrestige} × level\`\n📊 Available: ${pem} 1 to ${boost.maxPrestige}`).setFooter({ text: store.settings.storeName });
         return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
       }
-      // ===== GUN LEVEL with customer choice (with emojis) =====
+      // ===== GUN LEVEL with customer choice (2-step: category → gun → modal) =====
       if (boost.serviceType === 'gun_level' && boost.gunList && boost.gunList.length > 0) {
-        const options = boost.gunList.slice(0, 25).map((g, i) => ({ label: g.name.slice(0, 100), value: String(i), description: cur + (g.pricePerLevel||0) + ' per level', emoji: g.emoji || undefined }));
-        const select = new StringSelectMenuBuilder().setCustomId('bstg_' + boostId).setPlaceholder('اختر السلاح / Select your gun').addOptions(options);
-        const gunsText = boost.gunList.map(g => (g.emoji ? g.emoji + ' ' : '') + '`' + g.name + '` (' + cur + (g.pricePerLevel||0) + '/lvl)').join(', ');
-        const embed = new EmbedBuilder().setColor(brandColor).setTitle('🚀 ' + boost.titleEn).setDescription(`**Choose which gun to level up.**\n🔫 Available guns: ${gunsText}\n📊 Max level: ${boost.maxGunLevel}`).setFooter({ text: store.settings.storeName + ' • Step 1 of 2' });
-        return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
+        const categories = getGunCategories(boost);
+        // If multiple categories → show category select first
+        if (categories.length > 1) {
+          const catOptions = categories.slice(0, 25).map((c, i) => ({
+            label: c.name.slice(0, 100),
+            value: String(i),
+            description: c.guns.length + ' guns available',
+            emoji: c.emoji || undefined
+          }));
+          const select = new StringSelectMenuBuilder()
+            .setCustomId('bstcat_' + boostId)
+            .setPlaceholder('اختر فئة السلاح / Select gun category')
+            .addOptions(catOptions);
+          const embed = new EmbedBuilder()
+            .setColor(brandColor)
+            .setTitle('🚀 ' + boost.titleEn)
+            .setDescription(
+              `**اختر فئة السلاح أولاً / Choose a gun category first.**\n\n` +
+              `📋 الفئات المتاحة: ${categories.length}\n` +
+              `🔫 إجمالي الأسلحة: ${boost.gunList.length}\n` +
+              `💰 السعر: \`${cur}${boost.gunList[0]?.pricePerLevel || 15} لكل سلاح\`\n` +
+              `📊 الحد الأقصى للمستوى: ${boost.maxGunLevel}`
+            )
+            .setFooter({ text: store.settings.storeName + ' • الخطوة 1 من 3' });
+          return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
+        }
+        // Single category (or flat list) → go straight to gun select
+        return await showGunSelectForBoost(interaction, boost, 0);
       }
 
       // ===== FALLBACK: no customer-choice config → create ticket directly with fixed price =====
@@ -2202,18 +2288,36 @@ client.on('interactionCreate', async (interaction) => {
       return await createBoostingTicket(interaction, boost, { type: 'prestige', targetLevel: level }, price);
     }
 
-    // ---- GUN: customer selected gun → show modal for from/to levels ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('bstg_')) {
+    // ---- GUN: customer selected CATEGORY → show gun select from that category ----
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('bstcat_')) {
       const boostId = parseInt(interaction.customId.split('_')[1]);
       const boost = store.boostingServices.find(s => s.id === boostId);
       if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const gunIdx = parseInt(interaction.values[0]);
-      const gun = boost.gunList[gunIdx];
+      const catIdx = parseInt(interaction.values[0]);
+      await interaction.deferUpdate();
+      return await showGunSelectForBoost(interaction, boost, catIdx);
+    }
+
+    // ---- GUN: customer selected gun → show modal for from/to levels ----
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('bstg_')) {
+      const parts = interaction.customId.split('_');
+      const boostId = parseInt(parts[1]);
+      const catIdx = parseInt(parts[2] || '0');
+      const boost = store.boostingServices.find(s => s.id === boostId);
+      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
+      const categories = getGunCategories(boost);
+      const cat = categories[catIdx] || categories[0];
+      if (!cat) return interaction.reply({ content: '❌ Category missing.', ephemeral: true });
+      const gunLocalIdx = parseInt(interaction.values[0]);
+      const gun = cat.guns[gunLocalIdx];
+      if (!gun) return interaction.reply({ content: '❌ Gun missing.', ephemeral: true });
+      // Find global gun index in flat gunList (for createBoostingTicket + bstgm_)
+      const globalGunIdx = boost.gunList.findIndex(g => g.name === gun.name && g.emoji === gun.emoji);
       const gunEmoji = gun.emoji ? (typeof gun.emoji === 'object' ? '<:'+gun.emoji.name+':'+gun.emoji.id+'>' : gun.emoji) + ' ' : '🔫 ';
       const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-      const modal = new ModalBuilder().setCustomId('bstgm_' + boostId + '_' + gunIdx).setTitle(gunEmoji + gun.name + ' — Enter Levels');
-      const fromInput = new TextInputBuilder().setCustomId('from_level').setLabel('Current Level (1-' + boost.maxGunLevel + ')').setStyle(TextInputStyle.Short).setPlaceholder('e.g. 1').setRequired(true);
-      const toInput = new TextInputBuilder().setCustomId('to_level').setLabel('Target Level (1-' + boost.maxGunLevel + ')').setStyle(TextInputStyle.Short).setPlaceholder('e.g. 100').setRequired(true);
+      const modal = new ModalBuilder().setCustomId('bstgm_' + boostId + '_' + globalGunIdx).setTitle(gunEmoji + gun.name + ' — المستويات');
+      const fromInput = new TextInputBuilder().setCustomId('from_level').setLabel('المستوى الحالي (1-' + boost.maxGunLevel + ')').setStyle(TextInputStyle.Short).setPlaceholder('مثال: 1').setRequired(true);
+      const toInput = new TextInputBuilder().setCustomId('to_level').setLabel('المستوى المستهدف (1-' + boost.maxGunLevel + ')').setStyle(TextInputStyle.Short).setPlaceholder('مثال: 100').setRequired(true);
       modal.addComponents(new ActionRowBuilder().addComponents(fromInput), new ActionRowBuilder().addComponents(toInput));
       return interaction.showModal(modal);
     }
@@ -2232,7 +2336,9 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.reply({ content: '❌ مستويات غير صالحة. تأكد من أن 1 ≤ من < إلى ≤ ' + boost.maxGunLevel + ' / Invalid levels.', ephemeral: true });
       }
       const levels = toLevel - fromLevel;
-      const price = (gun.pricePerLevel || 0) * levels;
+      // Price = pricePerLevel × levels. If pricePerLevel is 0, use a flat $15 per gun (default)
+      const pricePerLevel = gun.pricePerLevel > 0 ? gun.pricePerLevel : 15;
+      const price = pricePerLevel * levels;
       await interaction.deferReply({ ephemeral: true });
       return await createBoostingTicket(interaction, boost, { type: 'gun_level', gunName: gun.name, fromLevel, toLevel, levels }, price);
     }
@@ -2544,6 +2650,43 @@ client.on('interactionCreate', async (interaction) => {
     } catch (e) {}
   }
 });
+
+// Helper: show gun select for a specific category (boosting gun_level flow)
+async function showGunSelectForBoost(interaction, boost, catIdx) {
+  const brandColor = store.settings.color || 0x9b59ff;
+  const cur = store.settings.currency;
+  const categories = getGunCategories(boost);
+  const cat = categories[catIdx] || categories[0];
+  if (!cat || !cat.guns || cat.guns.length === 0) {
+    return interaction.reply({ content: '❌ لا توجد أسلحة في هذه الفئة / No guns in this category.', ephemeral: true }).catch(()=>{});
+  }
+  const options = cat.guns.slice(0, 25).map((g, i) => ({
+    label: g.name.slice(0, 100),
+    value: String(i),
+    description: cur + (g.pricePerLevel || 15) + ' لكل سلاح',
+    emoji: g.emoji || undefined
+  }));
+  const select = new StringSelectMenuBuilder()
+    .setCustomId('bstg_' + boost.id + '_' + catIdx)
+    .setPlaceholder('اختر السلاح / Select your gun')
+    .addOptions(options);
+  const catName = (cat.emoji ? cat.emoji + ' ' : '') + cat.name;
+  const embed = new EmbedBuilder()
+    .setColor(brandColor)
+    .setTitle('🚀 ' + boost.titleEn)
+    .setDescription(
+      `**اختر السلاح من فئة: ${catName}**\n\n` +
+      `🔫 الأسلحة المتاحة: ${cat.guns.length}\n` +
+      `💰 السعر: \`${cur}${cat.guns[0]?.pricePerLevel || 15} لكل سلاح\`\n` +
+      `📊 الحد الأقصى للمستوى: ${boost.maxGunLevel}\n\n` +
+      `اختر السلاح الذي تريد رفع مستواه 👇`
+    )
+    .setFooter({ text: store.settings.storeName + ' • الخطوة 2 من 3' });
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] }).catch(()=>{});
+  }
+  return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(()=>{});
+}
 
 // Helper: show camo multi-select menu (called from ordercamo_ and camogun_ handlers)
 async function showCamoMultiSelect(interaction, camo, gunIdx) {
