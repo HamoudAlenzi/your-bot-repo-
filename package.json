@@ -1,0 +1,18 @@
+{
+  "name": "isiam-store-bot",
+  "version": "3.0.0",
+  "description": "isiam store — BO7 & Warzone Discord Store Bot | Quick Setup, Camo Unlock, Gun Leveling, Auto-Delivery, Control Panel",
+  "main": "bot.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node --watch bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}
