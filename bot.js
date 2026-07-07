@@ -1,317 +1,290 @@
-// ====================================================================
-// ISIAM STORE ADVANCED DIGITAL E-COMMERCE ENGINE
-// ====================================================================
+// =============================================
+// ISIAM STORE BOT — Private Tickets, Auto-Delivery & Multi-Image Embeds
+// =============================================
 
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
 const path = require('path');
-const { 
-  Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, 
-  ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ChannelType, PermissionFlagsBits 
+const fs = require('fs');
+const {
+  Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder,
+  ButtonStyle, Partials, StringSelectMenuBuilder, AttachmentBuilder,
+  PermissionFlagsBits, ChannelType
 } = require('discord.js');
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(__dirname));
 
-// Core Database State with local persistent backup
-let store = {
-  accounts: [],
-  settings: {
-    currency: 'SAR',
-    accountsChannelId: '',
-    ticketCategoryId: '',
-    alrajhiIBAN: 'SA0000000000000000000000',
-    alrajhiName: 'Hamoud Al Enzi',
-    paypalEmail: 'paypal@isiam.store',
-    stcPayNumber: '0500000000'
+function findPanelHtml() {
+  const paths = [
+    path.join(__dirname, 'panel.html'),
+    path.join(__dirname, 'public', 'panel.html'),
+  ];
+  for (const p of paths) {
+    if (fs.existsSync(p)) return p;
   }
+  return null;
+}
+const panelPath = findPanelHtml();
+if (panelPath) {
+  app.get('/panel.html', (req, res) => res.sendFile(panelPath));
+  app.get('/', (req, res) => res.redirect('/panel.html'));
+}
+
+// Data Store
+let store = {
+  accounts: [], orders: [], customers: [], pools: [],
+  paymentRequests: [], tickets: [], logs: [],
+  settings: {
+    prefix: '!', currency: '$', accountsChannelId: '', ticketCategoryId: '', logChannelId: '', ownerId: '',
+    termsAr: 'الشروط العامة\n▪️ يتم تسليم الحساب فور تأكيد الدفع\n▪️ الضمان يبدأ من تاريخ الشراء',
+    termsEn: 'General Terms\n▪️ Account delivered immediately after payment\n▪️ Warranty starts from purchase date',
+    stcPay: { number: '05XXXXXXXX', name: '' },
+    alrajhi: { iban: 'SA0000000000000000000', name: '' },
+    paypal: { email: 'pay@example.com', name: '' }
+  },
+  nextId: 1
 };
 
-// Load database safe checks
-if (fs.existsSync(DATA_FILE)) {
-  try {
-    store = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  } catch (err) {
-    console.error("Error reading database file, initializing fresh store:", err);
+function genId() { return store.nextId++; }
+function addLog(level, msg) {
+  store.logs.unshift({ time: new Date().toTimeString().slice(0, 8), level, msg });
+  if (store.logs.length > 500) store.logs.length = 500;
+}
+
+function base64ToBuffer(dataUri) {
+  const matches = dataUri.match(/^data:image\/(\w+);base64,(.+)$/);
+  if (!matches) return null;
+  return { buffer: Buffer.from(matches[2], 'base64'), ext: matches[1] === 'jpeg' ? 'jpg' : matches[1] };
+}
+
+function sendLogToDiscord(msg) {
+  const chId = store.settings.logChannelId;
+  if (chId && client.isReady()) {
+    const ch = client.channels.cache.get(chId);
+    if (ch) ch.send(msg).catch(() => {});
   }
 }
 
-function saveDatabase() {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2), 'utf8');
-}
+// API Routes
+app.get('/api/stats', (req, res) => {
+  res.json({
+    totalAccounts: store.accounts.length,
+    available: store.accounts.filter(a => a.status === 'available').length,
+    sold: store.accounts.filter(a => a.status === 'sold').length,
+    totalOrders: store.orders.length,
+    pendingPayments: store.paymentRequests.filter(p => p.status === 'Pending' || p.status === 'Waiting Review').length,
+    openTickets: store.tickets.filter(t => t.status !== 'closed').length
+  });
+});
 
-// --------------------------------------------------------------------
-// EXPRESS API FOR YOUR WEB PANEL
-// --------------------------------------------------------------------
 app.get('/api/accounts', (req, res) => res.json(store.accounts));
 
-app.post('/api/accounts', async (req, res) => {
-  const { title, price, details, email, password, images } = req.body;
-  
-  const newProduct = {
-    id: 'PROD-' + Date.now(),
-    title,
-    price: parseFloat(price) || 0.00,
-    details: details || '',
-    email: email || '',
-    password: password || '',
-    images: images || [], // Base64 or Image Link Arrays
-    status: 'available'
-  };
+app.post('/api/accounts', (req, res) => {
+  try {
+    const { titleEn, titleAr, game, price, prestige, stats, warranty, detailsEn, detailsAr, email, pass, extra, images } = req.body;
+    const allImages = images && Array.isArray(images) ? images : [];
+    
+    const acc = {
+      id: genId(), titleEn, titleAr: titleAr || '', game: game || 'Other',
+      price: parseFloat(price), prestige: prestige || '', stats: stats || '',
+      warranty: parseInt(warranty) || 0, detailsEn: detailsEn || '', detailsAr: detailsAr || '',
+      email: email || '', pass: pass || '', extra: extra || '', images: allImages,
+      status: 'available', discordMessageIds: [], createdAt: new Date().toISOString()
+    };
 
-  store.accounts.unshift(newProduct);
-  saveDatabase();
+    store.accounts.unshift(acc);
+    const channelId = store.settings.accountsChannelId;
 
-  // Cross-post automatically to Discord Catalog Channel
-  if (store.settings.accountsChannelId && client.isReady()) {
-    try {
-      const channel = await client.channels.fetch(store.settings.accountsChannelId);
-      if (channel) {
-        const embed = new EmbedBuilder()
-          .setColor(0x5865f2)
-          .setTitle(`🎮 ${newProduct.title}`)
-          .addFields(
-            { name: '💰 Price / السعر', value: `${newProduct.price} ${store.settings.currency}`, inline: true },
-            { name: '📋 Description', value: newProduct.details || 'No details provided.', inline: false }
-          )
-          .setFooter({ text: `isiam store • ID: ${newProduct.id}` });
+    if (channelId && client.isReady()) {
+      const channel = client.channels.cache.get(channelId);
+      if (channel) postAccountToDiscord(channel, acc, allImages);
+    }
+    res.json(acc);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-        if (newProduct.images.length > 0) {
-          embed.setImage(newProduct.images[0]); // Sets primary gallery picture
-        }
+async function postAccountToDiscord(channel, acc, allImages) {
+  const embeds = [];
+  const files = [];
+  const dummyUrl = 'https://isiam-store.app'; // Required to merge multiple images into one embed box
 
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`buy_${newProduct.id}`)
-            .setLabel('شراء / Buy Now')
-            .setStyle(ButtonStyle.Success)
-            .setEmoji('🛒')
-        );
+  const mainEmbed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle(`🎮 ${acc.titleEn}`)
+    .setURL(dummyUrl)
+    .addFields(
+      { name: 'الاسم / Title', value: acc.titleAr || acc.titleEn, inline: false },
+      { name: 'Rank / Level', value: acc.prestige || '-', inline: true },
+      { name: 'Total Stats', value: acc.stats || '-', inline: true },
+      { name: 'Warranty', value: acc.warranty > 0 ? acc.warranty + ' Days' : 'None', inline: true },
+      { name: 'Details', value: acc.detailsEn || '-', inline: false },
+      { name: 'Price', value: `${store.settings.currency}${acc.price.toFixed(2)}`, inline: false }
+    )
+    .setFooter({ text: `isiam store • Product ID: ${acc.id}` });
 
-        await channel.send({ embeds: [embed], components: [row] });
+  // Handle Multiple Images in ONE embed box using the Discord URL trick
+  for (let i = 0; i < allImages.length; i++) {
+    const parsed = base64ToBuffer(allImages[i]);
+    if (parsed) {
+      const fileName = `img_${i}.jpg`;
+      files.push(new AttachmentBuilder(parsed.buffer, { name: fileName }));
+      if (i === 0) {
+        mainEmbed.setImage(`attachment://${fileName}`);
+        embeds.push(mainEmbed);
+      } else {
+        const extraEmbed = new EmbedBuilder().setURL(dummyUrl).setImage(`attachment://${fileName}`);
+        embeds.push(extraEmbed);
       }
-    } catch (err) {
-      console.error("Failed to post product to Discord channel:", err);
     }
   }
 
-  res.json({ success: true, product: newProduct });
+  if (embeds.length === 0) embeds.push(mainEmbed);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('buy_' + acc.id).setLabel('شراء / Buy Now').setStyle(ButtonStyle.Success).setEmoji('🛒'),
+    new ButtonBuilder().setCustomId('verify_' + acc.id).setLabel('Verify').setStyle(ButtonStyle.Secondary)
+  );
+
+  const msg = await channel.send({ embeds, components: [row], files });
+  acc.discordMessageIds.push(msg.id);
+}
+
+app.delete('/api/accounts/:id', (req, res) => {
+  const acc = store.accounts.find(a => a.id === parseInt(req.params.id));
+  if (!acc) return res.status(404).json({ error: 'Not found' });
+  if (acc.discordMessageIds.length && client.isReady()) {
+    const channel = client.channels.cache.get(store.settings.accountsChannelId);
+    if (channel) acc.discordMessageIds.forEach(mid => channel.messages.delete(mid).catch(() => {}));
+  }
+  store.accounts = store.accounts.filter(a => a.id !== acc.id);
+  res.json({ success: true });
 });
 
+app.get('/api/orders', (req, res) => res.json(store.orders));
+app.get('/api/payments', (req, res) => res.json(store.paymentRequests));
+app.get('/api/tickets', (req, res) => res.json(store.tickets));
+app.get('/api/customers', (req, res) => res.json(store.customers));
 app.get('/api/settings', (req, res) => res.json(store.settings));
-app.post('/api/settings', (req, res) => {
-  store.settings = { ...store.settings, ...req.body };
-  saveDatabase();
-  res.json({ success: true, settings: store.settings });
+app.post('/api/settings', (req, res) => Object.assign(store.settings, req.body) && res.json(store.settings));
+
+// Approve Payment & Auto-Close Flow
+app.post('/api/payments/:id/approve', async (req, res) => {
+  try {
+    const pr = store.paymentRequests.find(p => p.id === req.params.id);
+    if (!pr) return res.status(404).json({ error: 'Request missing' });
+    pr.status = 'Approved';
+
+    const acc = store.accounts.find(a => a.id === pr.accountId);
+    if (acc) {
+      acc.status = 'sold';
+      store.orders.unshift({ id: 'ORD-' + genId(), cust: pr.userName, item: pr.accountTitle, amount: pr.amount, status: 'Delivered', paymentMethod: pr.method, date: new Date().toISOString() });
+
+      const ticket = store.tickets.find(t => t.paymentId === pr.id);
+      if (ticket && ticket.channelId && client.isReady()) {
+        const ticketChannel = client.channels.cache.get(ticket.channelId);
+        if (ticketChannel) {
+          // Give the account details
+          await ticketChannel.send({
+            content: `✅ **تم تأكيد الدفع بنجاح! / Payment Confirmed!**\n\n**${pr.accountTitle}**\n📧 Email: \`${acc.email}\`\n🔑 Password: \`${acc.pass}\`\n\n⏳ *This ticket will auto-close in 10 seconds...*`
+          });
+          ticket.status = 'closed';
+          
+          // Auto close itself
+          setTimeout(async () => {
+            try { await ticketChannel.delete('Purchase completed'); } catch(e){}
+          }, 10000);
+        }
+      }
+    }
+    res.json(pr);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --------------------------------------------------------------------
-// DISCORD BOT BOT INTERACTION WORKFLOW
-// --------------------------------------------------------------------
+// Discord Bot Intercepts
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 client.on('interactionCreate', async (interaction) => {
-  // 1. Handle "Buy Now" Catalog Button Click
   if (interaction.isButton() && interaction.customId.startsWith('buy_')) {
-    await interaction.deferReply({ ephemeral: true }); // Prevents the 'Interaction Failed' timeout window
-    
-    const productId = interaction.customId.replace('buy_', '');
-    const product = store.accounts.find(p => p.id === productId);
-
-    if (!product || product.status !== 'available') {
-      return interaction.editReply({ content: '❌ هذا المنتج غير متوفر حالياً أو تم بيعه / This product is currently out of stock.' });
-    }
+    const accId = parseInt(interaction.customId.split('_')[1]);
+    const acc = store.accounts.find(a => a.id === accId);
+    if (!acc || acc.status !== 'available') return interaction.reply({ content: '❌ Out of stock.', ephemeral: true });
 
     const guild = interaction.guild;
-    const clientUser = interaction.user;
-
-    // Look for parent ticket category setup
-    const parentCategory = store.settings.ticketCategoryId ? guild.channels.cache.get(store.settings.ticketCategoryId) : null;
-
-    // Create Private Ticket Room securely
+    const category = guild.channels.cache.get(store.settings.ticketCategoryId);
+    
+    // Create Private Ticket
     const ticketChannel = await guild.channels.create({
-      name: `🛒ـ${clientUser.username}`,
+      name: `buy-${interaction.user.username}`,
       type: ChannelType.GuildText,
-      parent: parentCategory ? parentCategory.id : null,
+      parent: category,
       permissionOverwrites: [
         { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-        { id: clientUser.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] },
-        { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks] }
+        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] }
       ]
     });
 
-    // Change status to hold item temporarily during checkout
-    product.status = 'pending_payment';
-    saveDatabase();
+    const ticketId = 'TKT-' + genId();
+    store.tickets.unshift({ id: ticketId, userId: interaction.user.id, userName: interaction.user.username, accountId: accId, accountTitle: acc.titleEn, amount: acc.price, channelId: ticketChannel.id, status: 'open' });
+    acc.status = 'reserved';
 
-    // Populate the ticket with complete order details & dynamic billing selectors
-    const entryEmbed = new EmbedBuilder()
-      .setColor(0x23a55a)
-      .setTitle('فاتورة الشراء وتأكيد الطلب / Secure Checkout Portal')
-      .setDescription(`مرحباً بك **${clientUser.username}** في متجر **isiam store**.\nلقد اخترت شراء المنتج التالي:`)
-      .addFields(
-        { name: '📦 Product / المنتج', value: `**${product.title}**`, inline: true },
-        { name: '💵 Total Price / الإجمالي', value: `**${product.price} ${store.settings.currency}**`, inline: true },
-        { name: '📌 Product ID', value: `\`${product.id}\``, inline: false }
-      )
-      .setThumbnail(product.images[0] || null)
-      .setFooter({ text: 'الرجاء اختيار طريقة الدفع المناسبة من القائمة أدناه لتلقي البيانات.' });
+    // Welcome embed inside private ticket using the specified local image
+    const welcomeEmbed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle('🛒 isiam store - Purchase System')
+      .setDescription(`Welcome **${interaction.user.username}**!\n\n**Product:** ${acc.titleEn}\n**Price:** ${store.settings.currency}${acc.price}\n\nPlease select your payment method below.`)
+      .setThumbnail('attachment://store_logo.png');
 
-    const paymentDropdown = new StringSelectMenuBuilder()
-      .setCustomId(`select_payment_${product.id}`)
-      .setPlaceholder('💳 اختر طريقة الدفع / Select Payment Method')
-      .addOptions([
-        { label: 'مصرف الراجحي / Al Rajhi Bank', description: 'الدفع عبر تحويل بنكي مباشر المدى', value: 'alrajhi', emoji: '🏦' },
-        { label: 'باي بال / PayPal Checkout', description: 'Pay securely using global credit cards or PayPal balance', value: 'paypal', emoji: '💳' },
-        { label: 'STC Pay', description: 'التحويل السريع عبر رقم الهاتف الجوال', value: 'stcpay', emoji: '📱' }
-      ]);
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId(`paymethod_${accId}_${ticketId}`)
+      .setPlaceholder('Choose payment method')
+      .addOptions(
+        { label: 'STC Pay', value: 'stcpay', emoji: '📱' },
+        { label: 'AlRajhi Bank', value: 'alrajhi', emoji: '🏦' }
+      );
 
-    const row = new ActionRowBuilder().addComponents(paymentDropdown);
+    const logoFile = new AttachmentBuilder('0e3f41e7-3aa3-40c4-9a1d-e3d05cebe709-profile_image-70x70.png', { name: 'store_logo.png' });
 
     await ticketChannel.send({
-      content: `${clientUser} | 🔔 طلب شراء جديد`,
-      embeds: [entryEmbed],
-      components: [row]
+      content: `<@${interaction.user.id}>`,
+      embeds: [welcomeEmbed],
+      files: [logoFile],
+      components: [new ActionRowBuilder().addComponents(selectMenu)]
     });
 
-    return interaction.editReply({ content: `✅ تم فتح تذكرتك الخاصة بنجاح! اذهب هنا لإكمال الدفع: ${ticketChannel}` });
+    return interaction.reply({ content: `🎫 Private ticket created: <#${ticketChannel.id}>`, ephemeral: true });
   }
 
-  // 2. Handle Payment Selection Dropdown Menu
-  if (interaction.isStringSelectMenu() && interaction.customId.startsWith('select_payment_')) {
-    await interaction.deferReply();
-    
-    const productId = interaction.customId.replace('select_payment_', '');
-    const product = store.accounts.find(p => p.id === productId);
-    const chosenMethod = interaction.values[0];
+  // Payment Selection
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith('paymethod_')) {
+    const parts = interaction.customId.split('_');
+    const acc = store.accounts.find(a => a.id === parseInt(parts[1]));
+    const ticket = store.tickets.find(t => t.id === parts[2]);
+    const method = interaction.values[0];
 
-    if (!product) {
-      return interaction.editReply({ content: 'Error: Product record could not be found.' });
-    }
+    const payId = 'PAY-' + genId();
+    store.paymentRequests.unshift({ id: payId, userId: interaction.user.id, userName: interaction.user.username, accountId: acc.id, accountTitle: acc.titleEn, amount: acc.price, method: method.toUpperCase(), status: 'Pending' });
+    ticket.paymentId = payId; ticket.status = 'waiting_payment';
 
-    let paymentDetailsEmbed = new EmbedBuilder().setColor(0x5865f2).setTimestamp();
-    const adminActionRow = new ActionRowBuilder();
-
-    // Contextual payment logic based on menu selections
-    if (chosenMethod === 'alrajhi') {
-      paymentDetailsEmbed
-        .setTitle('🏦 معلومات التحويل البنكي — مصرف الراجحي')
-        .setDescription('الرجاء تحويل المبلغ المطلوب إلى الحساب التالي، ثم ارفع صورة الإيصال (التحويل كأصل) هنا في الدردشة.')
-        .addFields(
-          { name: 'اسم الحساب / Account Name', value: store.settings.alrajhiName, inline: true },
-          { name: 'رقم الآيبان / IBAN', value: `\`${store.settings.alrajhiIBAN}\``, inline: false },
-          { name: 'المبلغ المطلوب / Amount', value: `**${product.price} ${store.settings.currency}**`, inline: true }
-        );
-    } else if (chosenMethod === 'paypal') {
-      paymentDetailsEmbed
-        .setTitle('💳 الدفع عبر باي بال / PayPal Information')
-        .setDescription('الرجاء إرسال الأموال كـ (Friends and Family) لتفادي التعليق وضمان سرعة التسليم.')
-        .addFields(
-          { name: 'حساب الباي بال / PayPal Email', value: `\`${store.settings.paypalEmail}\``, inline: false },
-          { name: 'المبلغ المطلوب / Amount', value: `**${product.price} USD / ${store.settings.currency}**`, inline: true }
-        );
-    } else if (chosenMethod === 'stcpay') {
-      paymentDetailsEmbed
-        .setTitle('📱 الدفع عبر التحويل لـ STC Pay')
-        .setDescription('قم بتحويل المبلغ فوراً عبر تطبيق STC Pay إلى الرقم المرفق أدناه.')
-        .addFields(
-          { name: 'رقم الجوال / Phone Number', value: `\`${store.settings.stcPayNumber}\``, inline: true },
-          { name: 'المبلغ المطلوب / Amount', value: `**${product.price} ${store.settings.currency}**`, inline: true }
-        );
-    }
-
-    // Embed validation keys directly on admin actions so execution data is stateless
-    adminActionRow.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`approve_buy_${product.id}`)
-        .setLabel('تأكيد الدفع وتسليم الحساب / Approve & Deliver Account')
-        .setStyle(ButtonStyle.Success)
-        .setEmoji('✅'),
-      new ButtonBuilder()
-        .setCustomId(`cancel_buy_${product.id}`)
-        .setLabel('إلغاء الطلب / Cancel Order')
-        .setStyle(ButtonStyle.Danger)
-    );
-
-    await interaction.editReply({ 
-      content: '⏳ يرجى إتمام عملية التحويل وإرسال صورة واضحة لإيصال التحويل البنكي هنا.',
-      embeds: [paymentDetailsEmbed], 
-      components: [adminActionRow] 
-    });
-  }
-
-  // 3. Handle Admin Order Management Approvals & Safe Auto-Deletion Loop
-  if (interaction.isButton() && interaction.customId.startsWith('approve_buy_')) {
-    await interaction.deferReply();
-    
-    // Authorization Check: Verify if checking user has Administrator permissions
-    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.editReply({ content: '❌ عذراً، هذا الإجراء مخصص لإدارة المتجر فقط / Admins only.', ephemeral: true });
-    }
-
-    const productId = interaction.customId.replace('approve_buy_', '');
-    const product = store.accounts.find(p => p.id === productId);
-
-    if (!product) {
-      return interaction.editReply({ content: 'Error: Inventory target entity was moved or already processed.' });
-    }
-
-    // Flag item as sold across system indexes
-    product.status = 'sold';
-    saveDatabase();
-
-    // Delivery Phase: Transmit credentials inside the private secure channel block
-    const deliveryEmbed = new EmbedBuilder()
-      .setColor(0x23a55a)
-      .setTitle('🎉 تم تأكيد الدفع! إليك بيانات حسابك / Order Delivered Successfully')
-      .setDescription('شكراً لثقتك بـ **isiam store**! إليك تفاصيل المنتج الرقمي الخاص بك:')
-      .addFields(
-        { name: '📧 Email / اسم المستخدم', value: `\`${product.email}\``, inline: false },
-        { name: '🔑 Password / كلمة المرور', value: `\`${product.password}\``, inline: false }
-      )
-      .setFooter({ text: '⚠️ احتفظ بالمعلومات وقم بتغيير بيانات الحساب فوراً لسلامتك.' })
-      .setTimestamp();
-
-    await interaction.channel.send({ content: `📦 **تسليم فوري للمنتج:**`, embeds: [deliveryEmbed] });
-
-    await interaction.editReply({ content: '✅ تم إرسال البيانات للعميل بنجاح. سيتم إغلاق التذكرة تلقائياً بعد قليل...' });
-
-    // Auto-Close Sequence: Safely delete channel context window after a 10-second buffer delay
-    setTimeout(async () => {
-      try {
-        await interaction.channel.delete('Purchase processing completed successfully.');
-      } catch (err) {
-        console.error('Failed to auto-delete ticket channel context:', err);
-      }
-    }, 10000);
-  }
-
-  // 4. Handle Order Cancellations / Return stock to inventory pools
-  if (interaction.isButton() && interaction.customId.startsWith('cancel_buy_')) {
-    await interaction.deferReply();
-    
-    const productId = interaction.customId.replace('cancel_buy_', '');
-    const product = store.accounts.find(p => p.id === productId);
-
-    if (product && product.status === 'pending_payment') {
-      product.status = 'available';
-      saveDatabase();
-    }
-
-    await interaction.editReply({ content: '❌ تم إلغاء الطلب وإرجاع المنتج للمتجر. سيتم تدمير هذه التذكرة الآن...' });
-    
-    setTimeout(async () => {
-      try { await interaction.channel.delete('Order cancellation clean-up.'); } catch(e){}
-    }, 4000);
+    let info = method === 'stcpay' ? `📱 **STC Pay:** ${store.settings.stcPay.number}` : `🏦 **AlRajhi:** ${store.settings.alrajhi.iban}`;
+    await interaction.reply(`💳 **Payment Instructions:**\nAmount: $${acc.price}\n${info}\n\n⚠️ **Next Step:** Transfer the amount, then **upload a picture of the receipt here.**`);
   }
 });
 
-// Start application servers synchronously 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`E-commerce Web Server alive on port ${PORT}`));
+// Image Receipt interception
+client.on('messageCreate', async (message) => {
+  const ticket = store.tickets.find(t => t.channelId === message.channel.id && t.status === 'waiting_payment');
+  if (ticket && message.attachments.size > 0) {
+    const pr = store.paymentRequests.find(p => p.id === ticket.paymentId);
+    pr.status = 'Waiting Review'; ticket.status = 'waiting_review';
+    message.reply(`✅ **Receipt received!** The admin is reviewing it. Your account will be delivered right here once approved.`);
+  }
+});
+
+app.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log('isiam store running'));
 client.login(process.env.DISCORD_TOKEN);
