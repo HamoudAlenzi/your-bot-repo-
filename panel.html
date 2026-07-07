@@ -270,7 +270,8 @@ a:hover{color:var(--accent-2)}
 /* ===== ACCOUNT CARD ===== */
 .account-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
 .account-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:var(--transition)}
-.account-card:hover{border-color:var(--border-light);transform:translateY(-2px);box-shadow:var(--shadow)}
+.account-card:hover{border-color:var(--accent);transform:translateY(-4px);box-shadow:var(--shadow),0 0 24px rgba(155,89,255,.2);transition:all .25s cubic-bezier(.4,0,.2,1)}
+.account-card{transition:all .25s cubic-bezier(.4,0,.2,1)}
 .account-card .thumb{aspect-ratio:16/9;background:var(--bg-deep);position:relative;overflow:hidden}
 .account-card .thumb img{width:100%;height:100%;object-fit:cover}
 .account-card .thumb .game-tag{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);
@@ -1294,23 +1295,28 @@ async function repostBoosting(id) {
   try { await api(`boosting/${id}/repost`, { method:'POST' }); toast('success', 'Re-posted to Discord'); refreshAll(); }
   catch (e) { toast('error', e.message); }
 }
-// Load BO7 guns into boosting gunList textarea (appends with :0.50 default price)
+// Load BO7 guns into boosting gunList textarea (categorized format with # headers, $15/gun default)
 function loadBo7GunsToBoosting(scope) {
   const ta = document.getElementById('b_gunList');
   if (!ta) return;
   let text;
-  if (scope === 'all') text = allBo7GunsAsText();
-  else text = bo7GunsByCategoryAsText(scope);
-  // Add :0.50 price per level to each line if not present
-  const lines = text.split('\n').map(line => {
-    const trimmed = line.trim();
-    if (!trimmed) return '';
-    const parts = trimmed.split(':');
-    if (parts.length >= 2 && !isNaN(parseFloat(parts[parts.length-1]))) return trimmed;
-    return trimmed + ':0.50';
-  }).filter(Boolean);
-  ta.value = lines.join('\n');
-  toast('success', `Loaded ${lines.length} BO7 guns${scope!=='all'?' ('+scope+')':''}`);
+  if (scope === 'all') {
+    // Load all categories with # headers
+    text = BO7_CATALOG.gunsByCategory.map(cat => {
+      const header = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.category;
+      const guns = cat.weapons.map(w => (w.emoji||cat.emoji||'🔫') + ' ' + w.name + ':15');
+      return header + '\n' + guns.join('\n');
+    }).join('\n');
+  } else {
+    // Load single category
+    const cat = BO7_CATALOG.gunsByCategory.find(c => c.category === scope);
+    if (!cat) return;
+    text = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.category + '\n' +
+      cat.weapons.map(w => (w.emoji||cat.emoji||'🔫') + ' ' + w.name + ':15').join('\n');
+  }
+  ta.value = text;
+  const lineCount = text.split('\n').filter(l => l.trim() && !l.startsWith('#')).length;
+  toast('success', `Loaded ${lineCount} BO7 guns${scope!=='all'?' ('+scope+')':''} @ $15/gun`);
 }
 function openBoostingModal(editId) {
   const edit = editId ? CACHE.boosting.find(s => s.id === editId) : null;
@@ -1323,8 +1329,18 @@ function openBoostingModal(editId) {
     ? edit.rankList.map(r => (r.emoji ? (typeof r.emoji === 'object' ? `<:${r.emoji.name}:${r.emoji.id}>` : r.emoji) + ' ' : '') + r.name).join('\n')
     : catalogToText(BO7_CATALOG.ranks);
   const gunListText = edit && edit.gunList && edit.gunList.length
-    ? edit.gunList.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name + ':' + g.pricePerLevel).join('\n')
-    : allBo7GunsAsText().split('\n').slice(0, 15).map(l => l + ':0.50').join('\n');
+    ? (edit.gunList.__categories
+        ? edit.gunList.__categories.map(cat => {
+            const header = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.name;
+            const guns = cat.guns.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name + ':' + (g.pricePerLevel || 15));
+            return header + '\n' + guns.join('\n');
+          }).join('\n')
+        : edit.gunList.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name + ':' + (g.pricePerLevel || 15)).join('\n'))
+    : BO7_CATALOG.gunsByCategory.slice(0, 2).map(cat => {
+        const header = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.category;
+        const guns = cat.weapons.map(w => (w.emoji||cat.emoji||'🔫') + ' ' + w.name + ':15');
+        return header + '\n' + guns.join('\n');
+      }).join('\n');
 
   showModal(`
     <div class="modal-header"><h3>${isEdit?'Edit':'New'} Boosting Service</h3><button class="close" onclick="closeModal()">&times;</button></div>
@@ -1369,14 +1385,21 @@ function openBoostingModal(editId) {
 
       <div id="b_gunFields" class="hidden">
         <div class="form-row">
-          <div class="form-field"><label>Available Guns (emoji + GunName:PricePerLevel, one per line)</label>
+          <div class="form-field"><label>Available Guns (use # Category headers to group, then emoji GunName:price per line)</label>
             <div class="flex gap-2 mb-2" style="flex-wrap:wrap">
-              <button type="button" class="btn btn-sm" onclick="loadBo7GunsToBoosting('all')"><i class="fa-solid fa-gun"></i> All BO7 Guns</button>
+              <button type="button" class="btn btn-sm" onclick="loadBo7GunsToBoosting('all')"><i class="fa-solid fa-gun"></i> All BO7 Guns ($15)</button>
               ${BO7_CATALOG.gunsByCategory.map(cat=>`<button type="button" class="btn btn-sm" onclick="loadBo7GunsToBoosting('${escapeAttr(cat.category)}')">${cat.emoji} ${escapeHtml(cat.category)}</button>`).join('')}
             </div>
-            <textarea id="b_gunList" style="min-height:140px;font-family:'JetBrains Mono',monospace" placeholder="🔫 M4A1:0.50&#10;🔫 AK-47:0.50&#10;💣 MP5:0.40">${escapeHtml(gunListText)}</textarea></div>
+            <textarea id="b_gunList" style="min-height:180px;font-family:'JetBrains Mono',monospace" placeholder="# Assault Rifles&#10;🔫 AK-27:15&#10;🔫 M15 MOD 0:15&#10;# SMGs&#10;💨 Dravec 45:15&#10;💨 Kogot-7:15">${escapeHtml(gunListText)}</textarea>
+            <p class="text-xs text-muted mt-2"><b>Format:</b> Lines starting with <code>#</code> are category names. Other lines are guns: <code>emoji GunName:price</code><br>
+            <b>Customer flow:</b> picks category → picks gun → enters levels → price = levels × price<br>
+            e.g. AK-27 1→100 = 99 × $15 = <b>$1485</b> · Default price = $15/gun</p></div>
           <div class="form-field"><label>Max Gun Level</label><input id="b_maxGunLevel" type="number" value="${v('maxGunLevel',100)}" placeholder="100">
-            <p class="text-xs text-muted mt-2">Customer picks gun + from→to levels. Price = (to−from) × pricePerLevel.<br>e.g. M4A1 1→100 = 99 × $0.50 = $49.50</p></div>
+            <p class="text-xs text-muted mt-2">Max level a gun can reach (BO7 = 100).<br>Customer enters current level (1) → target level (100).</p>
+            <div class="mt-3" style="background:var(--bg-input);padding:10px;border-radius:8px;border:1px solid var(--border)">
+              <p class="text-xs text-muted" style="margin-bottom:4px"><b>💡 Pricing example:</b></p>
+              <p class="text-xs mono" style="color:var(--green)">AK-27: 1 → 100<br>= 99 levels × $15<br>= <b>$1485</b></p>
+            </div></div>
         </div>
       </div>
 
