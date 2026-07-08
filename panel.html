@@ -1329,8 +1329,8 @@ function openBoostingModal(editId) {
     ? edit.rankList.map(r => (r.emoji ? (typeof r.emoji === 'object' ? `<:${r.emoji.name}:${r.emoji.id}>` : r.emoji) + ' ' : '') + r.name).join('\n')
     : catalogToText(BO7_CATALOG.ranks);
   const gunListText = edit && edit.gunList && edit.gunList.length
-    ? (edit.gunList.__categories
-        ? edit.gunList.__categories.map(cat => {
+    ? (edit.gunCategories && edit.gunCategories.length
+        ? edit.gunCategories.map(cat => {
             const header = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.name;
             const guns = cat.guns.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name + ':' + (g.pricePerLevel || 15));
             return header + '\n' + guns.join('\n');
@@ -1531,7 +1531,13 @@ function openCamoModal(editId) {
     ? edit.camoList.map(c => (c.emoji ? (typeof c.emoji === 'object' ? `<:${c.emoji.name}:${c.emoji.id}>` : c.emoji) + ' ' : '') + c.name + (c.price !== null && c.price !== undefined ? ':' + c.price : '')).join('\n')
     : catalogToText(BO7_CATALOG.bo7MasteryCamos, true);
   const gunListText = edit && edit.gunList && edit.gunList.length
-    ? edit.gunList.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name).join('\n')
+    ? (edit.gunCategories && edit.gunCategories.length
+        ? edit.gunCategories.map(cat => {
+            const header = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.name;
+            const guns = cat.guns.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name);
+            return header + '\n' + guns.join('\n');
+          }).join('\n')
+        : edit.gunList.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name).join('\n'))
     : '';
   showModal(`
     <div class="modal-header"><h3>${isEdit?'Edit':'New'} Camo Unlock Service</h3><button class="close" onclick="closeModal()">&times;</button></div>
