@@ -1,3053 +1,2230 @@
-// =============================================
-// isiam store — Discord Store Bot v2
-// Features: Multi-image stacked embeds, private tickets, payment flow,
-//           coupons, auto-delivery pools, JSON persistence, panel auth
-// Deploy: Railway (set DISCORD_TOKEN + PANEL_PASSWORD env vars)
-// =============================================
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>isiam store — Control Center</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+/* ===== isiam store — Dark Premium Theme ===== */
+:root{
+  --bg-deep:#0a0a0f; --bg:#12121a; --bg-elev:#1a1a25; --bg-card:#1e1e2e;
+  --bg-input:#15151f; --bg-hover:#252535; --bg-active:#2a2a40;
+  --border:#2a2a3a; --border-light:#3a3a55;
+  --fg:#f5f5fa; --fg-muted:#9b9bb0; --fg-dim:#6a6a82;
+  --accent:#9b59ff; --accent-2:#c084fc; --accent-dim:rgba(155,89,255,.15); --accent-glow:rgba(155,89,255,.4);
+  --gold:#f0c040; --gold-dim:rgba(240,192,64,.15);
+  --green:#3ddc84; --green-dim:rgba(61,220,132,.15);
+  --red:#ff5a6e; --red-dim:rgba(255,90,110,.15);
+  --yellow:#ffb547; --yellow-dim:rgba(255,181,71,.15);
+  --radius:12px; --radius-sm:8px; --radius-lg:18px;
+  --shadow:0 10px 40px rgba(0,0,0,.5); --shadow-glow:0 0 30px rgba(155,89,255,.25);
+  --transition:.18s cubic-bezier(.4,0,.2,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:'Inter','Cairo',sans-serif;background:var(--bg-deep);color:var(--fg);min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:
+  radial-gradient(circle at 15% 20%, rgba(155,89,255,.08), transparent 50%),
+  radial-gradient(circle at 85% 80%, rgba(240,192,64,.06), transparent 50%),
+  radial-gradient(circle at 50% 100%, rgba(155,89,255,.04), transparent 60%);
+  pointer-events:none;z-index:0}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--border-light)}
+input,textarea,select,button{font-family:inherit}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent-2)}
 
-const express = require('express');
-const cors = require('cors');
-const crypto = require('crypto');
-const path = require('path');
-const fs = require('fs');
-const {
-  Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder,
-  ButtonStyle, Partials, StringSelectMenuBuilder, AttachmentBuilder,
-  PermissionFlagsBits, ChannelType
-} = require('discord.js');
+/* ===== LOGIN SCREEN ===== */
+.login-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:1000;
+  background:radial-gradient(circle at center, var(--bg-elev), var(--bg-deep));}
+.login-card{background:rgba(30,30,46,.7);backdrop-filter:blur(20px);border:1px solid var(--border-light);
+  border-radius:24px;padding:48px 40px;width:420px;max-width:90vw;box-shadow:var(--shadow),var(--shadow-glow);
+  position:relative;overflow:hidden;animation:fadeUp .6s ease}
+.login-card::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;
+  background:conic-gradient(from 0deg, transparent 0%, var(--accent-glow) 25%, transparent 50%);
+  animation:spin 8s linear infinite;z-index:-1;opacity:.3}
+.login-logo{width:80px;height:80px;margin:0 auto 20px;border-radius:20px;
+  background:linear-gradient(135deg, var(--accent), var(--gold));display:flex;align-items:center;justify-content:center;
+  font-size:38px;color:#fff;box-shadow:0 8px 24px var(--accent-glow)}
+.login-title{text-align:center;font-size:26px;font-weight:800;letter-spacing:-.5px;margin-bottom:4px;
+  background:linear-gradient(135deg, #fff, var(--accent-2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.login-sub{text-align:center;color:var(--fg-muted);font-size:13px;margin-bottom:30px}
+.input-group{margin-bottom:18px}
+.input-group label{display:block;font-size:12px;color:var(--fg-muted);margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+.input-group input,.input-group textarea,.input-group select{width:100%;background:var(--bg-input);border:1px solid var(--border);
+  border-radius:10px;padding:12px 14px;color:var(--fg);font-size:14px;transition:var(--transition);outline:none}
+.input-group input:focus,.input-group textarea:focus,.input-group select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.btn-login{width:100%;background:linear-gradient(135deg, var(--accent), var(--accent-2));color:#fff;border:none;
+  padding:14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:var(--transition);
+  box-shadow:0 4px 16px var(--accent-glow);letter-spacing:.3px}
+.btn-login:hover{transform:translateY(-2px);box-shadow:0 6px 24px var(--accent-glow)}
+.btn-login:active{transform:translateY(0)}
+.login-error{color:var(--red);font-size:13px;text-align:center;margin-top:12px;min-height:18px}
 
-// ===== CONFIG =====
-const STORE_NAME = 'isiam store';
-const STORE_TAGLINE = 'Premium Accounts Store';
-const DATA_FILE = path.join(__dirname, 'data.json');
-const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-const PANEL_PASSWORD = process.env.PANEL_PASSWORD || 'admin123'; // change via env var!
-const COOKIE_NAME = 'isiam_session';
-const SESSIONS = new Map(); // sessionId -> expiry timestamp
-const SESSION_TTL = 1000 * 60 * 60 * 24 * 7; // 7 days
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 
-// ===== EXPRESS SERVER =====
-const app = express();
-app.use(cors());
-app.use(express.json({ limit: '60mb' }));
-app.use(express.urlencoded({ limit: '60mb', extended: true }));
-app.use(express.static(__dirname, { index: false }));
+/* ===== APP LAYOUT ===== */
+.app{display:flex;height:100vh;overflow:hidden;position:relative;z-index:1}
+.sidebar{width:240px;background:rgba(18,18,26,.85);backdrop-filter:blur(20px);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;flex-shrink:0;transition:width var(--transition)}
+.sidebar-header{padding:22px 18px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
+.sidebar-logo{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg, var(--accent), var(--gold));
+  display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;box-shadow:0 4px 12px var(--accent-glow);flex-shrink:0}
+.sidebar-brand{flex:1;min-width:0}
+.sidebar-brand h1{font-size:16px;font-weight:800;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-brand span{font-size:11px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:1px}
+.sidebar-nav{flex:1;padding:14px 10px;overflow-y:auto}
+.nav-section{margin-bottom:14px}
+.nav-section-title{font-size:10px;color:var(--fg-dim);text-transform:uppercase;letter-spacing:1.5px;padding:0 12px;margin-bottom:6px;font-weight:600}
+.nav-item{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;color:var(--fg-muted);
+  font-size:14px;font-weight:500;cursor:pointer;transition:var(--transition);margin-bottom:2px;user-select:none}
+.nav-item:hover{background:var(--bg-hover);color:var(--fg)}
+.nav-item.active{background:linear-gradient(135deg, var(--accent-dim), transparent);color:var(--fg);
+  box-shadow:inset 3px 0 0 var(--accent)}
+.nav-item.active i{color:var(--accent)}
+.nav-item i{width:18px;text-align:center;font-size:14px}
+.nav-item .badge{margin-left:auto;background:var(--accent);color:#fff;font-size:10px;font-weight:700;
+  padding:2px 7px;border-radius:8px;min-width:20px;text-align:center}
+.nav-item .badge.warn{background:var(--yellow)}
+.nav-item .badge.danger{background:var(--red)}
+.sidebar-footer{padding:14px;border-top:1px solid var(--border)}
+.bot-status{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg-elev);border-radius:10px;font-size:12px}
+.bot-status .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+.bot-status .dot.offline{background:var(--red);box-shadow:0 0 8px var(--red)}
+.bot-status .info{flex:1}
+.bot-status .info b{display:block;font-size:12px;color:var(--fg)}
+.bot-status .info span{font-size:10px;color:var(--fg-muted)}
+.btn-logout{width:100%;background:var(--bg-elev);border:1px solid var(--border);color:var(--fg-muted);
+  padding:9px;border-radius:8px;font-size:12px;cursor:pointer;margin-top:8px;transition:var(--transition)}
+.btn-logout:hover{background:var(--red-dim);color:var(--red);border-color:var(--red)}
 
-// ===== DATA STORE (with JSON persistence) =====
-const DEFAULT_STORE = {
-  accounts: [],
-  orders: [],
-  customers: [],
-  pools: [],
-  coupons: [],
-  digitalProducts: [],   // PSN cards, Xbox subs, Netflix, CD keys — instant code delivery
-  boostingServices: [],  // CoD/Warzone rank, prestige, gun level boosting — service-based
-  camoServices: [],      // CoD/Warzone weapon camo unlock — admin adds camo names, customer picks
-  paymentRequests: [],
-  tickets: [],
-  logs: [],
-  settings: {
-    storeName: STORE_NAME,
-    currency: '$',
-    accountsChannelId: '',
-    digitalChannelId: '',     // channel for Digital Products posts (fallback: accountsChannelId)
-    boostingChannelId: '',   // channel for Boosting Services posts (fallback: accountsChannelId)
-    camoChannelId: '',       // channel for Camo Unlock posts (fallback: accountsChannelId)
-    ticketCategoryId: '',
-    logChannelId: '',
-    ownerId: '',
-    staffRoleIds: [], // additional roles that can see all tickets
-    termsAr: 'الشروط العامة\n━━━━━━━━━━━━━━━\n▪️ يتم تسليم الحساب فور تأكيد الدفع\n▪️ الضمان يبدأ من تاريخ الشراء\n▪️ لا يوجد استرداد بعد تسليم الحساب\n▪️ جميع المبيعات نهائية',
-    termsEn: 'General Terms\n━━━━━━━━━━━━━━━\n▪️ Account delivered immediately after payment confirmation\n▪️ Warranty starts from purchase date\n▪️ No refunds after account delivery\n▪️ All sales are final',
-    welcomeAr: 'مرحباً بك في متجر isiam! تم فتح تذكرة شراء خاصة لك. اختر طريقة الدفع من القائمة بالأسفل.',
-    welcomeEn: 'Welcome to isiam store! A private purchase ticket has been opened. Choose a payment method below.',
-    stcPay: { number: '05XXXXXXXX', name: '' },
-    alrajhi: { iban: 'SA0000000000000000000', name: '' },
-    paypal: { email: 'pay@example.com', name: '' },
-    color: 0x9b59ff, // brand purple
-    autoCloseSeconds: 15
-  },
-  nextId: 1
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{height:64px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;
+  background:rgba(18,18,26,.7);backdrop-filter:blur(20px);gap:16px}
+.topbar h2{font-size:18px;font-weight:700;flex:1}
+.topbar .search{position:relative;flex:0 1 320px}
+.topbar .search input{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;
+  padding:9px 12px 9px 36px;color:var(--fg);font-size:13px;outline:none;transition:var(--transition)}
+.topbar .search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.topbar .search i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--fg-muted);font-size:13px}
+.topbar-actions{display:flex;gap:8px;align-items:center}
+.btn-icon{width:36px;height:36px;border-radius:10px;background:var(--bg-elev);border:1px solid var(--border);
+  color:var(--fg-muted);cursor:pointer;transition:var(--transition);display:flex;align-items:center;justify-content:center}
+.btn-icon:hover{background:var(--bg-hover);color:var(--fg)}
+.content{flex:1;overflow-y:auto;padding:24px}
+
+/* ===== BUTTONS ===== */
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--bg-elev);border:1px solid var(--border);
+  color:var(--fg);padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;transition:var(--transition)}
+.btn:hover{background:var(--bg-hover);border-color:var(--border-light)}
+.btn-primary{background:linear-gradient(135deg, var(--accent), var(--accent-2));border:none;color:#fff;box-shadow:0 4px 14px var(--accent-glow)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 20px var(--accent-glow)}
+.btn-success{background:var(--green-dim);border:1px solid var(--green);color:var(--green)}
+.btn-success:hover{background:var(--green);color:#000}
+.btn-danger{background:var(--red-dim);border:1px solid var(--red);color:var(--red)}
+.btn-danger:hover{background:var(--red);color:#fff}
+.btn-warn{background:var(--yellow-dim);border:1px solid var(--yellow);color:var(--yellow)}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:8px}
+.btn-block{width:100%;justify-content:center}
+
+/* ===== CARDS / STATS ===== */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;
+  position:relative;overflow:hidden;transition:var(--transition)}
+.stat-card:hover{transform:translateY(-2px);border-color:var(--border-light);box-shadow:var(--shadow)}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent)}
+.stat-card.green::before{background:var(--green)}
+.stat-card.gold::before{background:var(--gold)}
+.stat-card.red::before{background:var(--red)}
+.stat-card.yellow::before{background:var(--yellow)}
+.stat-card.purple::before{background:var(--accent)}
+.stat-label{font-size:11px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:600}
+.stat-value{font-size:28px;font-weight:800;letter-spacing:-.5px;font-family:'Inter',sans-serif}
+.stat-sub{font-size:11px;color:var(--fg-dim);margin-top:4px}
+.stat-icon{position:absolute;top:18px;right:18px;width:40px;height:40px;border-radius:12px;
+  background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px}
+.stat-card.green .stat-icon{background:var(--green-dim);color:var(--green)}
+.stat-card.gold .stat-icon{background:var(--gold-dim);color:var(--gold)}
+.stat-card.red .stat-icon{background:var(--red-dim);color:var(--red)}
+.stat-card.yellow .stat-icon{background:var(--yellow-dim);color:var(--yellow)}
+
+/* ===== PANEL CARD ===== */
+.panel-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;margin-bottom:16px}
+.panel-card h3{font-size:13px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.panel-card h3 i{color:var(--accent)}
+.panel-card .actions{margin-left:auto;display:flex;gap:8px}
+
+/* ===== TABLE ===== */
+.data-table{width:100%;border-collapse:collapse}
+.data-table th{text-align:left;font-size:11px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:1px;
+  padding:10px 12px;border-bottom:1px solid var(--border);font-weight:600}
+.data-table td{padding:12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+.data-table tr:hover td{background:var(--bg-hover)}
+.data-table tr:last-child td{border-bottom:none}
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.badge.available{background:var(--green-dim);color:var(--green)}
+.badge.reserved{background:var(--yellow-dim);color:var(--yellow)}
+.badge.sold{background:var(--red-dim);color:var(--red)}
+.badge.dead{background:#444;color:#aaa}
+.badge.pending,.badge.waiting_review,.badge.Waiting{background:var(--yellow-dim);color:var(--yellow)}
+.badge.delivered,.badge.approved,.badge.Approved,.badge.Delivered{background:var(--green-dim);color:var(--green)}
+.badge.rejected,.badge.Rejected,.badge.Refunded{background:var(--red-dim);color:var(--red)}
+.badge.open,.badge.waiting_payment{background:var(--accent-dim);color:var(--accent)}
+.badge.closed{background:#333;color:#888}
+.badge.boosting_in_progress{background:var(--accent-dim);color:var(--accent-2)}
+.badge.camo_in_progress{background:var(--accent-dim);color:var(--accent-2)}
+
+/* ===== FORMS ===== */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px}
+.form-field label{display:block;font-size:11px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:600}
+.form-field input,.form-field textarea,.form-field select{width:100%;background:var(--bg-input);border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px;color:var(--fg);font-size:13px;outline:none;transition:var(--transition)}
+.form-field input:focus,.form-field textarea:focus,.form-field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.form-field textarea{min-height:80px;resize:vertical;font-family:inherit}
+
+/* ===== IMAGE UPLOAD ===== */
+.image-upload-zone{border:2px dashed var(--border-light);border-radius:12px;padding:24px;text-align:center;
+  cursor:pointer;transition:var(--transition);background:var(--bg-input)}
+.image-upload-zone:hover,.image-upload-zone.dragover{border-color:var(--accent);background:var(--accent-dim)}
+.image-upload-zone i{font-size:32px;color:var(--accent);margin-bottom:8px}
+.image-upload-zone p{color:var(--fg-muted);font-size:13px}
+.image-preview-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:12px}
+.image-preview{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--bg-deep);border:1px solid var(--border)}
+.image-preview img{width:100%;height:100%;object-fit:cover}
+.image-preview .remove{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;
+  background:rgba(0,0,0,.7);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px}
+.image-preview .remove:hover{background:var(--red)}
+.image-preview .cover-badge{position:absolute;bottom:4px;left:4px;background:var(--accent);color:#fff;
+  font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700;text-transform:uppercase}
+
+/* ===== MODAL ===== */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:500;
+  display:none;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.show{display:flex;animation:fadeIn .2s ease}
+.modal{background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-lg);
+  width:90%;max-width:600px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow);animation:fadeUp .3s ease}
+.modal-header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:sticky;top:0;background:var(--bg-card);position:sticky;top:0;z-index:10}
+.modal-header h3{font-size:16px;font-weight:700;flex:1}
+.modal-header .close{background:none;border:none;color:var(--fg-muted);font-size:20px;cursor:pointer;width:32px;height:32px;border-radius:8px}
+.modal-header .close:hover{background:var(--bg-hover);color:var(--fg)}
+.modal-body{padding:22px}
+.modal-footer{padding:16px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--bg-card)}
+
+/* ===== TOAST ===== */
+.toast-container{position:fixed;top:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:10px}
+.toast{background:var(--bg-card);border:1px solid var(--border-light);border-left:4px solid var(--accent);
+  padding:14px 18px;border-radius:10px;box-shadow:var(--shadow);min-width:280px;max-width:380px;
+  display:flex;align-items:center;gap:12px;animation:slideIn .3s ease}
+.toast.success{border-left-color:var(--green)}
+.toast.error{border-left-color:var(--red)}
+.toast.warn{border-left-color:var(--yellow)}
+.toast i{font-size:18px}
+.toast.success i{color:var(--green)}
+.toast.error i{color:var(--red)}
+.toast.warn i{color:var(--yellow)}
+.toast.info i{color:var(--accent)}
+.toast .msg{flex:1;font-size:13px}
+
+/* ===== EMPTY STATE ===== */
+.empty{text-align:center;padding:48px 20px;color:var(--fg-muted)}
+.empty i{font-size:48px;margin-bottom:12px;color:var(--fg-dim)}
+.empty p{font-size:14px}
+.empty .btn{margin-top:16px}
+
+/* ===== PAGE ===== */
+.page{display:none;animation:fadeIn .3s ease}
+.page.active{display:block}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.page-header h2{font-size:22px;font-weight:800;letter-spacing:-.5px}
+.page-header p{color:var(--fg-muted);font-size:13px;margin-top:2px}
+
+/* ===== FILTER BAR ===== */
+.filter-bar{display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+.filter-bar select,.filter-bar input{background:var(--bg-input);border:1px solid var(--border);border-radius:8px;
+  padding:9px 12px;color:var(--fg);font-size:13px;outline:none}
+.filter-bar select:focus,.filter-bar input:focus{border-color:var(--accent)}
+.filter-bar .spacer{flex:1}
+
+/* ===== CHART ===== */
+.chart-container{position:relative;height:240px;margin-top:10px}
+.chart-bars{display:flex;align-items:flex-end;height:200px;gap:4px;padding-bottom:20px;border-bottom:1px solid var(--border)}
+.chart-bar{flex:1;background:linear-gradient(180deg, var(--accent), var(--accent-2));border-radius:4px 4px 0 0;
+  position:relative;min-height:2px;transition:var(--transition);cursor:pointer}
+.chart-bar:hover{filter:brightness(1.3)}
+.chart-bar .tip{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:var(--bg-deep);
+  border:1px solid var(--border-light);padding:4px 8px;border-radius:6px;font-size:11px;white-space:nowrap;
+  opacity:0;pointer-events:none;transition:var(--transition);margin-bottom:4px}
+.chart-bar:hover .tip{opacity:1}
+.chart-labels{display:flex;gap:4px;margin-top:6px}
+.chart-labels span{flex:1;text-align:center;font-size:10px;color:var(--fg-dim)}
+
+/* ===== ACCOUNT CARD ===== */
+.account-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.account-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:var(--transition)}
+.account-card:hover{border-color:var(--accent);transform:translateY(-4px);box-shadow:var(--shadow),0 0 24px rgba(155,89,255,.2);transition:all .25s cubic-bezier(.4,0,.2,1)}
+.account-card{transition:all .25s cubic-bezier(.4,0,.2,1)}
+.account-card .thumb{aspect-ratio:16/9;background:var(--bg-deep);position:relative;overflow:hidden}
+.account-card .thumb img{width:100%;height:100%;object-fit:cover}
+.account-card .thumb .game-tag{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);
+  color:#fff;font-size:10px;padding:3px 8px;border-radius:6px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.account-card .thumb .img-count{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.7);color:#fff;
+  font-size:10px;padding:3px 8px;border-radius:6px;display:flex;align-items:center;gap:4px}
+.account-card .body{padding:14px}
+.account-card .body h4{font-size:14px;font-weight:700;margin-bottom:4px;line-height:1.3}
+.account-card .body .sub{font-size:11px;color:var(--fg-muted);margin-bottom:8px}
+.account-card .body .price{font-size:18px;font-weight:800;color:var(--gold);font-family:'Inter',sans-serif}
+.account-card .body .meta{display:flex;gap:8px;margin-top:8px;font-size:11px;color:var(--fg-muted);flex-wrap:wrap}
+.account-card .body .meta span{display:flex;align-items:center;gap:3px}
+.account-card .actions{display:flex;gap:6px;padding:0 14px 14px}
+.account-card .actions .btn{flex:1;font-size:11px;padding:7px 8px}
+
+/* ===== PROGRESS STEPS ===== */
+.steps{display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+.step{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;font-size:12px;color:var(--fg-muted)}
+.step.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+.step.done{background:var(--green-dim);border-color:var(--green);color:var(--green)}
+.step .num{width:20px;height:20px;border-radius:50%;background:var(--bg-deep);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.step.active .num{background:var(--accent);color:#fff}
+.step.done .num{background:var(--green);color:#000}
+.step-divider{flex:1;height:1px;background:var(--border);min-width:20px}
+
+/* ===== UTILITY ===== */
+.flex{display:flex}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}
+.items-center{align-items:center}.justify-between{justify-content:space-between}
+.text-muted{color:var(--fg-muted)}.text-sm{font-size:12px}.text-xs{font-size:11px}
+.mono{font-family:'JetBrains Mono',monospace}
+.hidden{display:none!important}
+.text-right{text-align:right}.text-center{text-align:center}
+.mt-2{margin-top:8px}.mt-3{margin-top:12px}.mt-4{margin-top:16px}.mt-6{margin-top:24px}
+.mb-2{margin-bottom:8px}.mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}
+.w-full{width:100%}.flex-1{flex:1}
+
+@media(max-width:900px){
+  .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:100;transform:translateX(-100%)}
+  .sidebar.open{transform:translateX(0)}
+  .form-row,.form-row-3{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN SCREEN ===== -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">🏪</div>
+    <div class="login-title">isiam store</div>
+    <div class="login-sub">Premium Accounts • Control Center</div>
+    <form id="loginForm" onsubmit="return doLogin(event)">
+      <div class="input-group">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="Enter panel password" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn-login" id="loginBtn">
+        <i class="fa-solid fa-unlock"></i> Unlock Panel
+      </button>
+      <div class="login-error" id="loginError"></div>
+    </form>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--fg-dim)">
+      Set <code style="background:var(--bg-input);padding:2px 6px;border-radius:4px">PANEL_PASSWORD</code> env var on Railway
+    </div>
+  </div>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div class="app" id="app" style="display:none">
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">🏪</div>
+      <div class="sidebar-brand">
+        <h1>isiam store</h1>
+        <span>Control Center</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <div class="nav-item active" data-page="dashboard"><i class="fa-solid fa-chart-line"></i> Dashboard</div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">Store</div>
+        <div class="nav-item" data-page="products"><i class="fa-solid fa-box"></i> Products</div>
+        <div class="nav-item" data-page="pools"><i class="fa-solid fa-bolt"></i> Auto-Delivery</div>
+        <div class="nav-item" data-page="digital"><i class="fa-solid fa-ticket"></i> Digital Products</div>
+        <div class="nav-item" data-page="boosting"><i class="fa-solid fa-rocket"></i> Boosting Services</div>
+        <div class="nav-item" data-page="camo"><i class="fa-solid fa-palette"></i> Camo Unlock</div>
+        <div class="nav-item" data-page="coupons"><i class="fa-solid fa-tag"></i> Coupons</div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">Sales</div>
+        <div class="nav-item" data-page="orders"><i class="fa-solid fa-receipt"></i> Orders</div>
+        <div class="nav-item" data-page="payments"><i class="fa-solid fa-money-bill-wave"></i> Payments <span class="badge warn" id="payBadge" style="display:none">0</span></div>
+        <div class="nav-item" data-page="tickets"><i class="fa-solid fa-headset"></i> Tickets <span class="badge" id="ticketBadge" style="display:none">0</span></div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">People</div>
+        <div class="nav-item" data-page="customers"><i class="fa-solid fa-users"></i> Customers</div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">System</div>
+        <div class="nav-item" data-page="settings"><i class="fa-solid fa-gear"></i> Settings</div>
+        <div class="nav-item" data-page="logs"><i class="fa-solid fa-list"></i> Activity Logs</div>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="bot-status">
+        <div class="dot" id="botDot"></div>
+        <div class="info">
+          <b id="botStatusText">Connecting...</b>
+          <span id="botStatusSub">Discord</span>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="doLogout()"><i class="fa-solid fa-sign-out-alt"></i> Logout</button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <header class="topbar">
+      <button class="btn-icon" onclick="document.getElementById('sidebar').classList.toggle('open')" style="display:none" id="mobileMenuBtn">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+      <h2 id="pageTitle">Dashboard</h2>
+      <div class="search">
+        <i class="fa-solid fa-search"></i>
+        <input type="text" placeholder="Quick search..." id="globalSearch">
+      </div>
+      <div class="topbar-actions">
+        <button class="btn-icon" onclick="refreshAll(true)" title="Refresh"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-primary btn-sm" onclick="openAccountModal()"><i class="fa-solid fa-plus"></i> New Product</button>
+      </div>
+    </header>
+
+    <div class="content" id="content">
+      <!-- Pages injected here -->
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL CONTAINER ===== -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modal"></div>
+</div>
+
+<!-- ===== TOAST CONTAINER ===== -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ===== isiam store — Panel Logic =====
+const API = '/api';
+let SESSION = localStorage.getItem('isiam_session') || '';
+let CURRENT_PAGE = 'dashboard';
+let CACHE = { accounts:[], orders:[], payments:[], tickets:[], customers:[], pools:[], coupons:[], settings:{}, logs:[], stats:{} };
+let IMAGE_QUEUE = []; // for new product modal
+
+// ===== CALL OF DUTY: BLACK OPS 7 / WARZONE CATALOGUE =====
+// Complete pre-built catalogue so admin doesn't type — just clicks "Load Preset"
+// BO7 launched Nov 2025 with 30 weapons + seasonal DLC additions
+const BO7_CATALOG = {
+  // Warzone Ranked Play ranks (with 3 tiers each, Top 250 is single-tier)
+  ranks: [
+    { emoji: '🥉', name: 'Bronze' },
+    { emoji: '🥈', name: 'Silver' },
+    { emoji: '🥇', name: 'Gold' },
+    { emoji: '💠', name: 'Platinum' },
+    { emoji: '💎', name: 'Diamond' },
+    { emoji: '🔴', name: 'Crimson' },
+    { emoji: '🟣', name: 'Iridescent' },
+    { emoji: '👑', name: 'Top 250' }
+  ],
+  // BO7 Prestige: 10 levels + Prestige Master
+  prestige: { max: 10, emoji: '🎖️', pricePerLevel: 10, masterEmoji: '👑' },
+  // BO7 Mastery Camos (Multiplayer) — top tier ones from the 16 total
+  bo7MasteryCamos: [
+    { emoji: '🔥', name: 'Molten Gold', price: 12 },
+    { emoji: '⚡', name: 'Arclight', price: 15 },
+    { emoji: '🌀', name: 'Void Stripe', price: 20 },
+    { emoji: '💎', name: 'Diamond', price: 25 },
+    { emoji: '🌑', name: 'Dark Matter', price: 35 },
+    { emoji: '🌌', name: 'Singularity', price: 30 },
+    { emoji: '🌋', name: 'Apocalypse', price: 28 },
+    { emoji: '🌱', name: 'Genesis', price: 28 },
+    { emoji: '⚡', name: 'Tempest', price: 30 },
+    { emoji: '🐛', name: 'Infestation', price: 32 }
+  ],
+  // BO7 Military/Base Camos (per-weapon unlock chain)
+  bo7BaseCamos: [
+    { emoji: '🏜️', name: 'Desert', price: 3 },
+    { emoji: '🌲', name: 'Jungle', price: 3 },
+    { emoji: '🪖', name: 'Marine', price: 3 },
+    { emoji: '🕸️', name: 'Cyber', price: 4 },
+    { emoji: '🌲', name: 'Pine', price: 4 },
+    { emoji: '🌳', name: 'Forest', price: 4 },
+    { emoji: '🏖️', name: 'Sand', price: 4 },
+    { emoji: '🌫️', name: 'Arctic', price: 5 },
+    { emoji: '⚫', name: 'Shadow', price: 5 },
+    { emoji: '🟫', name: 'Woodland', price: 5 },
+    { emoji: '🟦', name: 'Ocean', price: 5 },
+    { emoji: '🟪', name: 'Plum', price: 6 },
+    { emoji: '🟧', name: 'Ember', price: 6 },
+    { emoji: '🌫️', name: 'Fog', price: 6 }
+  ],
+  // BO7 Weapons by category — 30 launch + seasonal DLC = 40+ weapons
+  gunsByCategory: [
+    { category: 'Assault Rifles', emoji: '🔫', weapons: [
+      { emoji:'🔫', name:'AK-27' }, { emoji:'🔫', name:'M15 MOD 0' }, { emoji:'🔫', name:'MXR-17' },
+      { emoji:'🔫', name:'X9 Maverick' }, { emoji:'🔫', name:'DS20' }, { emoji:'🔫', name:'Peacemaker MK1' },
+      { emoji:'🔫', name:'Eagle' }, { emoji:'🔫', name:'Maddox RFB' }, { emoji:'🔫', name:'AN-94' },
+      { emoji:'🔫', name:'AS-44' }
+    ]},
+    { category: 'Submachine Guns (SMG)', emoji: '💨', weapons: [
+      { emoji:'💨', name:'Dravec 45' }, { emoji:'💨', name:'Kogot-7' }, { emoji:'💨', name:'Akita' },
+      { emoji:'💨', name:'CBRS-3' }, { emoji:'💨', name:'VX Compact' }, { emoji:'💨', name:'C9' },
+      { emoji:'💨', name:'Tanto 22' }, { emoji:'💨', name:'Saug' }
+    ]},
+    { category: 'Shotguns', emoji: '💥', weapons: [
+      { emoji:'💥', name:'Marine Breacher' }, { emoji:'💥', name:'SG-12' }, { emoji:'💥', name:'Bulldog' },
+      { emoji:'💥', name:'Argus' }, { emoji:'💥', name:'Haunter 12' }
+    ]},
+    { category: 'Light Machine Guns (LMG)', emoji: '⛓️', weapons: [
+      { emoji:'⛓️', name:'GPMG-7' }, { emoji:'⛓️', name:'Trex' }, { emoji:'⛓️', name:'BRUEN MK9' },
+      { emoji:'⛓️', name:'MG36' }
+    ]},
+    { category: 'Marksman Rifles', emoji: '🎖️', weapons: [
+      { emoji:'🎖️', name:'KRS-7.62' }, { emoji:'🎖️', name:'DM-14' }, { emoji:'🎖️', name:'Mattock' },
+      { emoji:'🎖️', name:'Siren' }
+    ]},
+    { category: 'Sniper Rifles', emoji: '🎯', weapons: [
+      { emoji:'🎯', name:'LW3I Tundra' }, { emoji:'🎯', name:'ZRG-1' }, { emoji:'🎯', name:'M14' },
+      { emoji:'🎯', name:'HDR' }
+    ]},
+    { category: 'Pistols', emoji: '🔫', weapons: [
+      { emoji:'🔫', name:'1911' }, { emoji:'🔫', name:'Reaper' }, { emoji:'🔫', name:'Renetti' },
+      { emoji:'🔫', name:'Magnum' }
+    ]},
+    { category: 'Special', emoji: '⚡', weapons: [
+      { emoji:'⚡', name:'Grimhawk' }, { emoji:'⚡', name:'Crossbow' }, { emoji:'⚡', name:'Siren' },
+      { emoji:'🛡️', name:'Riot Shield' }
+    ]}
+  ]
 };
 
-let store = loadStore();
-
-function loadStore() {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const raw = fs.readFileSync(DATA_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      // Merge with defaults so new fields are added gracefully
-      return {
-        ...DEFAULT_STORE,
-        ...parsed,
-        settings: { ...DEFAULT_STORE.settings, ...(parsed.settings || {}) }
-      };
-    }
-  } catch (e) {
-    console.error('Failed to load data.json:', e.message);
-  }
-  return JSON.parse(JSON.stringify(DEFAULT_STORE));
+// Helper: convert catalogue items to textarea format
+function catalogToText(items, withPrice) {
+  return items.map(item => {
+    const em = item.emoji ? item.emoji + ' ' : '';
+    if (withPrice && item.price !== undefined) return em + item.name + ':' + item.price;
+    return em + item.name;
+  }).join('\n');
 }
-
-let saveTimer = null;
-function saveStore() {
-  // Debounced atomic save — write to temp file then rename for crash safety
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try {
-      const tmp = DATA_FILE + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(store, null, 2));
-      fs.renameSync(tmp, DATA_FILE);
-    } catch (e) {
-      console.error('Save failed:', e.message);
-    }
-  }, 300);
-}
-// Save on exit
-process.on('SIGTERM', () => { try { fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2)); } catch(e){} process.exit(0); });
-process.on('SIGINT', () => { try { fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2)); } catch(e){} process.exit(0); });
-
-function genId() { const id = store.nextId++; saveStore(); return id; }
-
-function addLog(level, msg) {
-  store.logs.unshift({ time: new Date().toISOString(), level, msg });
-  if (store.logs.length > 500) store.logs.length = 500;
-  saveStore();
-}
-
-// Helper: convert base64 data URI to Buffer
-function base64ToBuffer(dataUri) {
-  const matches = dataUri.match(/^data:image\/(\w+);base64,(.+)$/);
-  if (!matches) return null;
-  return { buffer: Buffer.from(matches[2], 'base64'), ext: matches[1] === 'jpeg' ? 'jpg' : matches[1] };
-}
-
-function sendLogToDiscord(msg) {
-  const chId = store.settings.logChannelId;
-  if (chId && client.isReady()) {
-    const ch = client.channels.cache.get(chId);
-    if (ch) ch.send(msg).catch(() => {});
-  }
-}
-
-// ===== PANEL AUTH MIDDLEWARE =====
-function createSession() {
-  const sid = crypto.randomBytes(32).toString('hex');
-  SESSIONS.set(sid, Date.now() + SESSION_TTL);
-  return sid;
-}
-function isValidSession(sid) {
-  if (!sid) return false;
-  const exp = SESSIONS.get(sid);
-  if (!exp) return false;
-  if (Date.now() > exp) { SESSIONS.delete(sid); return false; }
-  return true;
-}
-function authMiddleware(req, res, next) {
-  // Allow panel.html itself (it handles login flow client-side)
-  if (req.path === '/panel.html' || req.path === '/' || req.path === '/logo.png' || req.path === '/favicon.ico') return next();
-  // Auth endpoints + backup (backup checks session via query param)
-  if (req.path === '/api/login' || req.path === '/api/check-auth' || req.path === '/api/backup') return next();
-  // Everything else requires a valid session
-  const sid = req.headers['x-session'];
-  if (!isValidSession(sid)) {
-    return res.status(401).json({ error: 'Unauthorized. Please login.' });
-  }
-  next();
-}
-app.use(authMiddleware);
-
-// ===== LOGIN API =====
-app.post('/api/login', (req, res) => {
-  const { password } = req.body || {};
-  if (!password) return res.status(400).json({ error: 'Password required' });
-  if (password !== PANEL_PASSWORD) {
-    addLog('WARN', `Failed panel login attempt from ${req.ip}`);
-    return res.status(401).json({ error: 'Wrong password' });
-  }
-  const sid = createSession();
-  addLog('INFO', `Panel login successful from ${req.ip}`);
-  res.json({ token: sid, storeName: store.settings.storeName });
-});
-
-app.post('/api/logout', (req, res) => {
-  const sid = req.headers['x-session'];
-  if (sid) SESSIONS.delete(sid);
-  res.json({ success: true });
-});
-
-app.get('/api/check-auth', (req, res) => {
-  const sid = req.headers['x-session'];
-  res.json({ authenticated: isValidSession(sid) });
-});
-
-// ===== SERVE PANEL =====
-app.get('/', (req, res) => res.redirect('/panel.html'));
-app.get('/panel.html', (req, res) => res.sendFile(path.join(__dirname, 'panel.html')));
-
-// ===== STATS =====
-app.get('/api/stats', (req, res) => {
-  try {
-    const delivered = store.orders.filter(o => o.status === 'Delivered');
-    const last7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const last30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    res.json({
-      storeName: store.settings.storeName,
-      totalAccounts: store.accounts.length,
-      available: store.accounts.filter(a => a.status === 'available').length,
-      reserved: store.accounts.filter(a => a.status === 'reserved').length,
-      sold: store.accounts.filter(a => a.status === 'sold').length,
-      dead: store.accounts.filter(a => a.status === 'dead').length,
-      totalRevenue: delivered.reduce((s, o) => s + o.amount, 0),
-      revenue30d: delivered.filter(o => new Date(o.date) >= last30).reduce((s, o) => s + o.amount, 0),
-      revenue7d: delivered.filter(o => new Date(o.date) >= last7).reduce((s, o) => s + o.amount, 0),
-      totalOrders: store.orders.length,
-      orders7d: store.orders.filter(o => new Date(o.date) >= last7).length,
-      pendingPayments: store.paymentRequests.filter(p => p.status === 'Pending' || p.status === 'Waiting Review').length,
-      openTickets: store.tickets.filter(t => t.status !== 'closed').length,
-      totalCustomers: store.customers.length,
-      activeCoupons: store.coupons.filter(c => c.active && (!c.expiresAt || new Date(c.expiresAt) > new Date()) && c.uses < c.maxUses).length,
-      activePools: store.pools.filter(p => p.stock && p.stock.length > 0).length,
-      digitalProducts: store.digitalProducts.length,
-      digitalInStock: store.digitalProducts.filter(d => d.stock && d.stock.length > 0).length,
-      boostingServices: store.boostingServices.length,
-      activeBoosts: store.tickets.filter(t => t.status === 'boosting_in_progress').length,
-      camoServices: store.camoServices.length,
-      botOnline: client.isReady(),
-      // Sales chart (last 14 days)
-      salesChart: buildSalesChart(delivered, 14),
-      topGames: buildTopGames(store.accounts)
+// Get all BO7 guns as flat text
+function allBo7GunsAsText() {
+  let out = [];
+  BO7_CATALOG.gunsByCategory.forEach(cat => {
+    cat.weapons.forEach(w => {
+      out.push((w.emoji||cat.emoji||'🔫') + ' ' + w.name);
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-function buildSalesChart(delivered, days) {
-  const out = [];
-  const now = new Date();
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now); d.setDate(now.getDate() - i);
-    const day = d.toISOString().slice(0, 10);
-    const revenue = delivered.filter(o => o.date && o.date.startsWith(day)).reduce((s, o) => s + o.amount, 0);
-    out.push({ date: day, revenue });
-  }
-  return out;
+  });
+  return out.join('\n');
 }
-function buildTopGames(accounts) {
-  const map = {};
-  accounts.forEach(a => { map[a.game] = (map[a.game] || 0) + 1; });
-  return Object.entries(map).map(([game, count]) => ({ game, count })).sort((a, b) => b.count - a.count).slice(0, 6);
+// Get guns from specific BO7 category
+function bo7GunsByCategoryAsText(categoryName) {
+  const cat = BO7_CATALOG.gunsByCategory.find(c => c.category === categoryName);
+  if (!cat) return '';
+  return cat.weapons.map(w => (w.emoji||cat.emoji) + ' ' + w.name).join('\n');
 }
 
-// ===== ACCOUNTS =====
-app.get('/api/accounts', (req, res) => {
+// ===== AUTH =====
+async function checkAuth() {
+  if (!SESSION) { showLogin(); return false; }
   try {
-    let { search, game, status } = req.query;
-    let filtered = store.accounts;
-    if (search) { const s = String(search).toLowerCase(); filtered = filtered.filter(a => a.titleEn.toLowerCase().includes(s) || (a.titleAr && a.titleAr.includes(s))); }
-    if (game && game !== 'All') filtered = filtered.filter(a => a.game === game);
-    if (status && status !== 'All') filtered = filtered.filter(a => a.status === status);
-    res.json(filtered);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/accounts', (req, res) => {
+    const r = await api('check-auth');
+    if (r.authenticated) { showApp(); return true; }
+    showLogin(); return false;
+  } catch (e) { showLogin(); return false; }
+}
+function showLogin() {
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+function showApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  refreshAll(true);
+  startPolling();
+}
+async function doLogin(e) {
+  e.preventDefault();
+  const pwd = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Checking...';
   try {
-    const { titleEn, titleAr, game, price, prestige, stats, warranty, detailsEn, detailsAr, email, pass, extra, images, couponEligible } = req.body;
-    if (!titleEn || !price) return res.status(400).json({ error: 'Title and price required' });
-
-    const allImages = Array.isArray(images) ? images : [];
-    const acc = {
-      id: genId(), titleEn, titleAr: titleAr || '', game: game || 'Other',
-      price: parseFloat(price), prestige: prestige || '', stats: stats || '',
-      warranty: parseInt(warranty) || 0, detailsEn: detailsEn || '', detailsAr: detailsAr || '',
-      email: email || '', pass: pass || '', extra: extra || '',
-      images: allImages, couponEligible: couponEligible !== false,
-      status: 'available', soldTo: null, discordMessageIds: [], createdAt: new Date().toISOString()
-    };
-
-    store.accounts.unshift(acc);
-    saveStore();
-
-    const channelId = store.settings.accountsChannelId;
-    if (channelId && client.isReady()) {
-      const channel = client.channels.cache.get(channelId);
-      if (channel) {
-        postAccountToDiscord(channel, acc).catch(err => {
-          console.error('Discord post error:', err.message);
-          addLog('ERROR', 'Failed to post account to Discord: ' + err.message);
-        });
-      }
-    }
-
-    addLog('INFO', `Account created: ${titleEn} with ${allImages.length} image(s)`);
-    res.json(acc);
-  } catch (e) {
-    console.error('POST /api/accounts error:', e);
-    addLog('ERROR', 'Failed to create account: ' + e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// === MULTI-IMAGE STACKED EMBEDS (all images INSIDE one visual embed box) ===
-// Technique: 1 main embed with all text + setImage(first image), then 1 image-only
-// embed per remaining image — all same color, no footer/title on image embeds.
-// Discord renders these as ONE continuous embed box with the colored bar running
-// down the entire left side. All images appear WITHIN the embed, not as attachments below.
-async function postAccountToDiscord(channel, acc) {
-  const allImages = acc.images || [];
-  const brandColor = store.settings.color || 0x9b59ff;
-  const priceText = store.settings.currency + acc.price.toFixed(2);
-
-  // ===== MAIN EMBED: title, description, all fields, footer, + first image as setImage =====
-  const mainEmbed = new EmbedBuilder()
-    .setColor(brandColor)
-    .setTitle('🛒 ' + acc.titleEn)
-    .setDescription(
-      (acc.titleAr ? '**' + acc.titleAr + '**\n' : '') +
-      '```yaml\n' + acc.game + '```\n' +
-      (acc.detailsEn ? '📋 ' + acc.detailsEn + '\n' : '') +
-      (acc.detailsAr ? '📋 ' + acc.detailsAr + '\n' : '')
-    )
-    .addFields(
-      { name: '🏆 Rank / Level', value: acc.prestige || '-', inline: true },
-      { name: '📊 Stats', value: acc.stats || '-', inline: true },
-      { name: '🛡️ Warranty', value: acc.warranty > 0 ? acc.warranty + ' Days' : 'None', inline: true },
-      { name: '💰 Price', value: '```fix\n' + priceText + '```', inline: false }
-    )
-    .setFooter({ text: store.settings.storeName + ' • Product ID: ' + acc.id })
-    .setTimestamp();
-
-  if (acc.extra) {
-    mainEmbed.addFields({ name: '📝 Extra Info', value: '```' + String(acc.extra).slice(0, 1000) + '```', inline: false });
-  }
-
-  // ===== Build attachments + stacked embeds =====
-  // First image → main embed's setImage (appears at bottom of main embed, inside the box)
-  // Remaining images → each in its own image-only embed (same color, no text)
-  //   → Discord merges them visually into one continuous embed box
-  const files = [];
-  const embeds = [mainEmbed];
-  let imageCount = 0;
-
-  for (let i = 0; i < allImages.length; i++) {
-    const parsed = base64ToBuffer(allImages[i]);
-    if (!parsed) continue;
-    const fileName = `img_${acc.id}_${i + 1}.jpg`;
-    files.push(new AttachmentBuilder(parsed.buffer, { name: fileName }));
-    imageCount++;
-
-    if (imageCount === 1) {
-      // First image goes inside the main embed (bottom)
-      mainEmbed.setImage('attachment://' + fileName);
+    const r = await fetch(API + '/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ password: pwd })
+    });
+    const data = await r.json();
+    if (r.ok && data.token) {
+      SESSION = data.token;
+      localStorage.setItem('isiam_session', SESSION);
+      document.getElementById('loginError').textContent = '';
+      document.getElementById('loginPassword').value = '';
+      showApp();
+      toast('success', 'Welcome back to isiam store!');
     } else {
-      // Each subsequent image gets its own embed — IMAGE ONLY, same color, no footer/title.
-      // This is the key to making them visually merge with the main embed into one box.
-      const imgEmbed = new EmbedBuilder()
-        .setColor(brandColor)
-        .setImage('attachment://' + fileName);
-      embeds.push(imgEmbed);
+      document.getElementById('loginError').textContent = data.error || 'Login failed';
     }
+  } catch (e) {
+    document.getElementById('loginError').textContent = 'Connection error';
   }
-
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('buy_' + acc.id).setLabel('شراء / Buy Now').setStyle(ButtonStyle.Success).setEmoji('💰'),
-    new ButtonBuilder().setCustomId('verify_' + acc.id).setLabel('تفاصيل / Details').setStyle(ButtonStyle.Secondary).setEmoji('🔍')
-  );
-
-  // Send all embeds in ONE message — they render as one continuous embed box
-  const msg = await channel.send({ embeds, components: [row], files });
-  acc.discordMessageIds.push(msg.id);
-  saveStore();
-  addLog('INFO', `Posted ${acc.titleEn} to Discord — ${imageCount} image(s) inside 1 stacked embed box (${embeds.length} embeds)`);
+  btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-unlock"></i> Unlock Panel';
+}
+function doLogout() {
+  fetch(API + '/logout', { method: 'POST', headers: {'x-session': SESSION} }).catch(()=>{});
+  SESSION = ''; localStorage.removeItem('isiam_session');
+  showLogin();
 }
 
-// Re-post an account (e.g. after edit, or if Discord message was lost)
-app.post('/api/accounts/:id/repost', async (req, res) => {
-  try {
-    const acc = store.accounts.find(a => a.id === parseInt(req.params.id));
-    if (!acc) return res.status(404).json({ error: 'Not found' });
-    const channelId = store.settings.accountsChannelId;
-    if (!channelId || !client.isReady()) return res.status(400).json({ error: 'Bot not ready or channel not set' });
-    const channel = client.channels.cache.get(channelId);
-    if (!channel) return res.status(400).json({ error: 'Channel not found' });
-    // Delete old messages first
-    for (const mid of acc.discordMessageIds) {
-      try { await channel.messages.delete(mid); } catch (e) {}
-    }
-    acc.discordMessageIds = [];
-    await postAccountToDiscord(channel, acc);
-    saveStore();
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+// ===== API HELPER =====
+async function api(endpoint, opts = {}) {
+  const r = await fetch(API + '/' + endpoint, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'x-session': SESSION, ...(opts.headers||{}) }
+  });
+  if (r.status === 401) { showLogin(); throw new Error('Unauthorized'); }
+  const text = await r.text();
+  try { return JSON.parse(text); } catch { return text; }
+}
+
+// ===== TOAST =====
+function toast(type, msg) {
+  const c = document.getElementById('toastContainer');
+  const icons = { success:'fa-circle-check', error:'fa-circle-xmark', warn:'fa-triangle-exclamation', info:'fa-circle-info' };
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.innerHTML = `<i class="fa-solid ${icons[type]||icons.info}"></i><div class="msg">${msg}</div>`;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(20px)'; setTimeout(()=>t.remove(), 300); }, 3500);
+}
+
+// ===== NAVIGATION =====
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    item.classList.add('active');
+    CURRENT_PAGE = item.dataset.page;
+    renderPage();
+  });
 });
 
-app.put('/api/accounts/:id', (req, res) => {
+function renderPage() {
+  const titles = { dashboard:'Dashboard', products:'Products', pools:'Auto-Delivery Pools',
+    digital:'Digital Products', boosting:'Boosting Services', camo:'Camo Unlock', coupons:'Coupons',
+    orders:'Orders', payments:'Payment Requests', tickets:'Support Tickets', customers:'Customers',
+    settings:'Settings', logs:'Activity Logs' };
+  document.getElementById('pageTitle').textContent = titles[CURRENT_PAGE] || 'Dashboard';
+  const content = document.getElementById('content');
+  const renderers = { dashboard:renderDashboard, products:renderProducts, pools:renderPools,
+    digital:renderDigital, boosting:renderBoosting, camo:renderCamo, coupons:renderCoupons,
+    orders:renderOrders, payments:renderPayments, tickets:renderTickets, customers:renderCustomers,
+    settings:renderSettings, logs:renderLogs };
+  (renderers[CURRENT_PAGE] || renderDashboard)(content);
+}
+
+// ===== REFRESH =====
+// Background polling ONLY updates badges + bot status silently.
+// It NEVER re-renders the page (which would wipe your typing).
+// The page only re-renders when YOU click refresh or perform an action.
+let _isModalOpen = false;
+let _isTyping = false;
+
+async function refreshAll(forceRender) {
   try {
-    const acc = store.accounts.find(a => a.id === parseInt(req.params.id));
-    if (!acc) return res.status(404).json({ error: 'Not found' });
-    const { images, ...rest } = req.body;
-    if (images) rest.images = images;
-    Object.assign(acc, rest, { id: acc.id });
-    saveStore();
-    addLog('INFO', 'Account updated: ' + acc.titleEn);
-    res.json(acc);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const [stats, accounts, orders, payments, tickets, customers, pools, coupons, settings, logs, digital, boosting, camo] = await Promise.all([
+      api('stats'), api('accounts'), api('orders'), api('payments'),
+      api('tickets'), api('customers'), api('pools'), api('coupons'), api('settings'), api('logs'),
+      api('digital'), api('boosting'), api('camo')
+    ]);
+    CACHE = { stats, accounts, orders, payments, tickets, customers, pools, coupons, settings, logs, digital, boosting, camo };
+    
+    // ALWAYS update bot status + badges silently (tiny DOM patches — no flash, no wipe)
+    const dot = document.getElementById('botDot');
+    const txt = document.getElementById('botStatusText');
+    if (stats.botOnline) { dot.classList.remove('offline'); txt.textContent = 'Bot Online'; }
+    else { dot.classList.add('offline'); txt.textContent = 'Bot Offline'; }
+    const payBadge = document.getElementById('payBadge');
+    if (stats.pendingPayments > 0) { payBadge.textContent = stats.pendingPayments; payBadge.style.display = 'inline-flex'; }
+    else payBadge.style.display = 'none';
+    const ticketBadge = document.getElementById('ticketBadge');
+    if (stats.openTickets > 0) { ticketBadge.textContent = stats.openTickets; ticketBadge.style.display = 'inline-flex'; }
+    else ticketBadge.style.display = 'none';
+    updateTopbarBadge();
+    
+    // ONLY re-render the page if:
+    // 1. forceRender=true (user clicked refresh or performed an action), AND
+    // 2. No modal is open (don't wipe form inputs), AND
+    // 3. User is not typing in a field
+    if (forceRender && !_isModalOpen && !_isTyping) {
+      renderPage();
+    }
+  } catch (e) {
+    console.error('Refresh failed:', e);
+    if (e.message === 'Unauthorized') showLogin();
+  }
+}
+
+// Background poll — ONLY updates badges, NEVER re-renders the page
+async function backgroundPoll() {
+  if (_isModalOpen || _isTyping) return; // Skip entirely if user is working
+  try {
+    const stats = await api('stats');
+    CACHE.stats = stats;
+    // Silent badge updates
+    const dot = document.getElementById('botDot');
+    const txt = document.getElementById('botStatusText');
+    if (stats.botOnline) { dot.classList.remove('offline'); txt.textContent = 'Bot Online'; }
+    else { dot.classList.add('offline'); txt.textContent = 'Bot Offline'; }
+    const payBadge = document.getElementById('payBadge');
+    if (stats.pendingPayments > 0) { payBadge.textContent = stats.pendingPayments; payBadge.style.display = 'inline-flex'; }
+    else payBadge.style.display = 'none';
+    const ticketBadge = document.getElementById('ticketBadge');
+    if (stats.openTickets > 0) { ticketBadge.textContent = stats.openTickets; ticketBadge.style.display = 'inline-flex'; }
+    else ticketBadge.style.display = 'none';
+    updateTopbarBadge();
+  } catch (e) {
+    if (e.message === 'Unauthorized') showLogin();
+  }
+}
+
+let POLL_TIMER = null;
+function startPolling() {
+  if (POLL_TIMER) clearInterval(POLL_TIMER);
+  POLL_TIMER = setInterval(backgroundPoll, 20000); // 20s, badges only, never re-renders
+}
+
+// Track when user is typing or has a modal open — prevents ANY re-render
+document.addEventListener('focusin', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (['input','textarea','select'].includes(tag)) _isTyping = true;
+});
+document.addEventListener('focusout', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (['input','textarea','select'].includes(tag)) {
+    // Small delay in case user is tabbing between fields
+    setTimeout(() => {
+      const active = document.activeElement;
+      const activeTag = (active?.tagName || '').toLowerCase();
+      if (!['input','textarea','select'].includes(activeTag)) _isTyping = false;
+    }, 200);
+  }
 });
 
-app.delete('/api/accounts/:id', async (req, res) => {
+// ===== DASHBOARD =====
+function renderDashboard(c) {
+  const s = CACHE.stats;
+  const cur = (CACHE.settings.currency || '$');
+  const maxRev = Math.max(...(s.salesChart||[]).map(d => d.revenue), 1);
+  const bars = (s.salesChart||[]).map(d => {
+    const h = Math.max(2, (d.revenue / maxRev) * 100);
+    const date = new Date(d.date); const lbl = date.toLocaleDateString('en', {month:'short',day:'numeric'});
+    return `<div class="chart-bar" style="height:${h}%" title="${lbl}: ${cur}${d.revenue.toFixed(2)}">
+      <div class="tip">${lbl} • ${cur}${d.revenue.toFixed(2)}</div></div>`;
+  }).join('');
+  const labels = (s.salesChart||[]).map(d => {
+    const date = new Date(d.date); return '<span>' + date.toLocaleDateString('en', {day:'numeric'}) + '</span>';
+  }).join('');
+
+  const topGames = (s.topGames||[]).map(g => {
+    const pct = s.totalAccounts > 0 ? (g.count / s.totalAccounts * 100) : 0;
+    return `<div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+        <span>${g.game}</span><span class="text-muted">${g.count}</span>
+      </div>
+      <div style="height:6px;background:var(--bg-input);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:3px"></div>
+      </div></div>`;
+  }).join('') || '<p class="text-muted text-sm">No products yet</p>';
+
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header">
+        <div><h2>Welcome back 👋</h2><p>Here's what's happening in your store today.</p></div>
+        <button class="btn btn-primary" onclick="openAccountModal()"><i class="fa-solid fa-plus"></i> Add Product</button>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card green"><div class="stat-icon"><i class="fa-solid fa-dollar-sign"></i></div>
+          <div class="stat-label">Total Revenue</div><div class="stat-value">${cur}${(s.totalRevenue||0).toFixed(2)}</div>
+          <div class="stat-sub">${cur}${(s.revenue30d||0).toFixed(2)} last 30d • ${cur}${(s.revenue7d||0).toFixed(2)} last 7d</div></div>
+        <div class="stat-card purple"><div class="stat-icon"><i class="fa-solid fa-box"></i></div>
+          <div class="stat-label">Products</div><div class="stat-value">${s.totalAccounts||0}</div>
+          <div class="stat-sub">${s.available||0} available • ${s.sold||0} sold</div></div>
+        <div class="stat-card gold"><div class="stat-icon"><i class="fa-solid fa-receipt"></i></div>
+          <div class="stat-label">Orders</div><div class="stat-value">${s.totalOrders||0}</div>
+          <div class="stat-sub">${s.orders7d||0} in last 7 days</div></div>
+        <div class="stat-card yellow"><div class="stat-icon"><i class="fa-solid fa-headset"></i></div>
+          <div class="stat-label">Open Tickets</div><div class="stat-value">${s.openTickets||0}</div>
+          <div class="stat-sub">${s.pendingPayments||0} pending payments</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+        <div class="panel-card">
+          <h3><i class="fa-solid fa-chart-column"></i> Revenue — Last 14 Days</h3>
+          <div class="chart-container">
+            <div class="chart-bars">${bars}</div>
+            <div class="chart-labels">${labels}</div>
+          </div>
+        </div>
+        <div class="panel-card">
+          <h3><i class="fa-solid fa-gamepad"></i> Top Categories</h3>
+          ${topGames}
+        </div>
+      </div>
+
+      <div class="stat-grid mt-4">
+        <div class="stat-card"><div class="stat-icon"><i class="fa-solid fa-users"></i></div>
+          <div class="stat-label">Customers</div><div class="stat-value">${s.totalCustomers||0}</div></div>
+        <div class="stat-card"><div class="stat-icon"><i class="fa-solid fa-bolt"></i></div>
+          <div class="stat-label">Active Pools</div><div class="stat-value">${s.activePools||0}</div></div>
+        <div class="stat-card"><div class="stat-icon"><i class="fa-solid fa-ticket"></i></div>
+          <div class="stat-label">Digital Products</div><div class="stat-value">${s.digitalProducts||0}</div>
+          <div class="stat-sub">${s.digitalInStock||0} with stock</div></div>
+        <div class="stat-card"><div class="stat-icon"><i class="fa-solid fa-rocket"></i></div>
+          <div class="stat-label">Boosting Services</div><div class="stat-value">${s.boostingServices||0}</div>
+          <div class="stat-sub">${s.activeBoosts||0} in progress</div></div>
+        <div class="stat-card"><div class="stat-icon"><i class="fa-solid fa-palette"></i></div>
+          <div class="stat-label">Camo Services</div><div class="stat-value">${s.camoServices||0}</div></div>
+        <div class="stat-card"><div class="stat-icon"><i class="fa-solid fa-tag"></i></div>
+          <div class="stat-label">Active Coupons</div><div class="stat-value">${s.activeCoupons||0}</div></div>
+        <div class="stat-card red"><div class="stat-icon"><i class="fa-solid fa-ban"></i></div>
+          <div class="stat-label">Dead Accounts</div><div class="stat-value">${s.dead||0}</div></div>
+      </div>
+
+      <div class="panel-card mt-4">
+        <h3><i class="fa-solid fa-clock-rotate-left"></i> Recent Activity</h3>
+        <div id="recentLogs"></div>
+      </div>
+    </div>
+  `;
+  // Recent logs preview
+  const logs = (CACHE.logs||[]).slice(0, 8);
+  document.getElementById('recentLogs').innerHTML = logs.length ? logs.map(l => `
+    <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <span class="mono text-muted" style="flex:0 0 80px">${new Date(l.time).toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})}</span>
+      <span style="flex:0 0 60px"><span class="badge ${l.level==='ERROR'?'rejected':l.level==='WARN'?'pending':'delivered'}">${l.level}</span></span>
+      <span style="flex:1">${l.msg}</span>
+    </div>
+  `).join('') : '<div class="empty"><p>No activity yet</p></div>';
+}
+
+// ===== PRODUCTS =====
+function renderProducts(c) {
+  const accounts = CACHE.accounts || [];
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header">
+        <div><h2>Products</h2><p>${accounts.length} total • ${accounts.filter(a=>a.status==='available').length} available</p></div>
+        <div class="flex gap-2">
+          <button class="btn" onclick="openBulkModal()"><i class="fa-solid fa-layer-group"></i> Bulk Import</button>
+          <button class="btn btn-primary" onclick="openAccountModal()"><i class="fa-solid fa-plus"></i> Add Product</button>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <input type="text" id="accSearch" placeholder="🔍 Search products..." oninput="filterProducts()">
+        <select id="accGameFilter" onchange="filterProducts()"><option value="All">All Games</option></select>
+        <select id="accStatusFilter" onchange="filterProducts()">
+          <option value="All">All Status</option><option value="available">Available</option>
+          <option value="reserved">Reserved</option><option value="sold">Sold</option><option value="dead">Dead</option>
+        </select>
+      </div>
+      <div id="accGrid" class="account-grid"></div>
+    </div>
+  `;
+  // Populate game filter
+  const games = [...new Set(accounts.map(a => a.game))].sort();
+  const sel = document.getElementById('accGameFilter');
+  games.forEach(g => { const o = document.createElement('option'); o.value = g; o.textContent = g; sel.appendChild(o); });
+  filterProducts();
+}
+function filterProducts() {
+  const q = (document.getElementById('accSearch')?.value || '').toLowerCase();
+  const g = document.getElementById('accGameFilter')?.value || 'All';
+  const st = document.getElementById('accStatusFilter')?.value || 'All';
+  let list = CACHE.accounts.filter(a => {
+    if (q && !a.titleEn.toLowerCase().includes(q) && !(a.titleAr||'').includes(q)) return false;
+    if (g !== 'All' && a.game !== g) return false;
+    if (st !== 'All' && a.status !== st) return false;
+    return true;
+  });
+  const grid = document.getElementById('accGrid');
+  if (!list.length) { grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><i class="fa-solid fa-box-open"></i><p>No products found. Add your first product!</p><button class="btn btn-primary" onclick="openAccountModal()"><i class="fa-solid fa-plus"></i> Add Product</button></div>'; return; }
+  const cur = CACHE.settings.currency || '$';
+  grid.innerHTML = list.map(a => `
+    <div class="account-card">
+      <div class="thumb">
+        ${a.images && a.images[0] ? `<img src="${a.images[0]}" alt="">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--fg-dim);font-size:32px"><i class="fa-solid fa-image"></i></div>`}
+        <div class="game-tag">${a.game}</div>
+        ${a.images && a.images.length > 1 ? `<div class="img-count"><i class="fa-solid fa-images"></i> ${a.images.length}</div>` : ''}
+        <div style="position:absolute;top:8px;right:8px"><span class="badge ${a.status}">${a.status}</span></div>
+      </div>
+      <div class="body">
+        <h4>${escapeHtml(a.titleEn)}</h4>
+        <div class="sub">${escapeHtml(a.titleAr || '')}</div>
+        <div class="price">${cur}${a.price.toFixed(2)}</div>
+        <div class="meta">
+          ${a.prestige ? `<span><i class="fa-solid fa-trophy"></i> ${escapeHtml(a.prestige)}</span>` : ''}
+          ${a.warranty > 0 ? `<span><i class="fa-solid fa-shield"></i> ${a.warranty}d</span>` : ''}
+          <span><i class="fa-solid fa-hashtag"></i> #${a.id}</span>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-sm" onclick="viewAccount(${a.id})"><i class="fa-solid fa-eye"></i></button>
+        <button class="btn btn-sm" onclick="editAccount(${a.id})"><i class="fa-solid fa-pen"></i></button>
+        <button class="btn btn-sm" onclick="repostAccount(${a.id})" title="Re-post to Discord"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-sm btn-danger" onclick="deleteAccount(${a.id})"><i class="fa-solid fa-trash"></i></button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ===== NEW/EDIT PRODUCT MODAL =====
+function openAccountModal(id) {
+  const acc = id ? CACHE.accounts.find(a => a.id === id) : null;
+  IMAGE_QUEUE = acc ? [...(acc.images||[])] : [];
+  const games = [...new Set(CACHE.accounts.map(a => a.game))].sort();
+  showModal(`
+    <div class="modal-header">
+      <h3>${acc ? 'Edit Product' : 'Add New Product'}</h3>
+      <button class="close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-field"><label>Title (English) *</label><input id="f_titleEn" value="${escapeAttr(acc?.titleEn||'')}" placeholder="e.g. Valorant Account - Immortal 2"></div>
+        <div class="form-field"><label>Title (Arabic)</label><input id="f_titleAr" value="${escapeAttr(acc?.titleAr||'')}" placeholder="مثال: حساب فالورانت - إيمورتال 2"></div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-field"><label>Game / Category *</label>
+          <input id="f_game" list="gameList" value="${escapeAttr(acc?.game||'')}" placeholder="Valorant">
+          <datalist id="gameList">${games.map(g=>`<option value="${escapeAttr(g)}">`).join('')}</datalist>
+        </div>
+        <div class="form-field"><label>Price *</label><input id="f_price" type="number" step="0.01" value="${acc?.price||''}" placeholder="29.99"></div>
+        <div class="form-field"><label>Warranty (days)</label><input id="f_warranty" type="number" value="${acc?.warranty||0}" placeholder="7"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-field"><label>Rank / Level</label><input id="f_prestige" value="${escapeAttr(acc?.prestige||'')}" placeholder="Immortal 2"></div>
+        <div class="form-field"><label>Stats</label><input id="f_stats" value="${escapeAttr(acc?.stats||'')}" placeholder="500 wins, 2.5 K/D"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-field"><label>Details (English)</label><textarea id="f_detailsEn" placeholder="Account details...">${escapeHtml(acc?.detailsEn||'')}</textarea></div>
+        <div class="form-field"><label>Details (Arabic)</label><textarea id="f_detailsAr" placeholder="تفاصيل الحساب...">${escapeHtml(acc?.detailsAr||'')}</textarea></div>
+      </div>
+      <div class="form-row">
+        <div class="form-field"><label>Email</label><input id="f_email" value="${escapeAttr(acc?.email||'')}" placeholder="account@email.com"></div>
+        <div class="form-field"><label>Password</label><input id="f_pass" value="${escapeAttr(acc?.pass||'')}" placeholder="password123"></div>
+      </div>
+      <div class="form-field mb-3"><label>Extra Info (delivery notes, etc.)</label>
+        <textarea id="f_extra" placeholder="Any extra info...">${escapeHtml(acc?.extra||'')}</textarea></div>
+
+      <div class="form-field">
+        <label>Product Images (up to 10) — All shown in 1 embed on Discord</label>
+        <div class="image-upload-zone" id="dropZone" onclick="document.getElementById('imgInput').click()">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+          <p><b>Click to upload</b> or drag & drop<br><span class="text-xs">First image = cover. All images stack in 1 Discord message.</span></p>
+          <input type="file" id="imgInput" multiple accept="image/*" style="display:none" onchange="handleImages(event)">
+        </div>
+        <div class="image-preview-grid" id="imgPreview"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAccount(${id||0})"><i class="fa-solid fa-save"></i> ${acc?'Update':'Create'} Product</button>
+    </div>
+  `);
+  // Drag & drop
+  const dz = document.getElementById('dropZone');
+  ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('dragover'); }));
+  ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('dragover'); }));
+  dz.addEventListener('drop', e => {
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    files.forEach(f => readImage(f));
+  });
+  renderImagePreview();
+}
+function readImage(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    if (IMAGE_QUEUE.length < 10) { IMAGE_QUEUE.push(e.target.result); renderImagePreview(); }
+    else toast('warn', 'Max 10 images allowed');
+  };
+  reader.readAsDataURL(file);
+}
+function handleImages(e) {
+  Array.from(e.target.files).forEach(f => readImage(f));
+  e.target.value = '';
+}
+function renderImagePreview() {
+  const grid = document.getElementById('imgPreview');
+  if (!grid) return;
+  grid.innerHTML = IMAGE_QUEUE.map((src, i) => `
+    <div class="image-preview">
+      <img src="${src}" alt="">
+      ${i===0?'<div class="cover-badge">Cover</div>':''}
+      <button class="remove" onclick="removeImage(${i})"><i class="fa-solid fa-times"></i></button>
+    </div>
+  `).join('');
+}
+function removeImage(i) { IMAGE_QUEUE.splice(i, 1); renderImagePreview(); }
+
+async function saveAccount(id) {
+  const data = {
+    titleEn: val('f_titleEn'), titleAr: val('f_titleAr'),
+    game: val('f_game') || 'Other', price: parseFloat(val('f_price')) || 0,
+    warranty: parseInt(val('f_warranty')) || 0, prestige: val('f_prestige'), stats: val('f_stats'),
+    detailsEn: val('f_detailsEn'), detailsAr: val('f_detailsAr'),
+    email: val('f_email'), pass: val('f_pass'), extra: val('f_extra'),
+    images: IMAGE_QUEUE
+  };
+  if (!data.titleEn || !data.price) return toast('error', 'Title and price are required');
   try {
-    const acc = store.accounts.find(a => a.id === parseInt(req.params.id));
-    if (!acc) return res.status(404).json({ error: 'Not found' });
-    if (acc.discordMessageIds.length && client.isReady()) {
-      const channel = client.channels.cache.get(store.settings.accountsChannelId);
-      if (channel) for (const mid of acc.discordMessageIds) { try { await channel.messages.delete(mid); } catch(e){} }
-    }
-    store.accounts = store.accounts.filter(a => a.id !== acc.id);
-    saveStore();
-    addLog('WARN', 'Account deleted: ' + acc.titleEn);
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+    if (id) { await api('accounts/' + id, { method:'PUT', body: JSON.stringify(data) }); toast('success', 'Product updated'); }
+    else { await api('accounts', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Product created & posted to Discord'); }
+    closeModal(); refreshAll(true);
+  } catch (e) { toast('error', 'Save failed: ' + e.message); }
+}
+async function deleteAccount(id) {
+  if (!confirm('Delete this product? This also removes the Discord message.')) return;
+  try { await api('accounts/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+async function repostAccount(id) {
+  if (!confirm('Re-post this product to Discord? Old message will be deleted.')) return;
+  try { await api('accounts/'+id+'/repost', { method:'POST' }); toast('success', 'Re-posted to Discord'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+function viewAccount(id) {
+  const a = CACHE.accounts.find(x => x.id === id); if (!a) return;
+  const cur = CACHE.settings.currency || '$';
+  showModal(`
+    <div class="modal-header"><h3>${escapeHtml(a.titleEn)}</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      ${a.images && a.images.length ? `<div style="display:flex;overflow-x:auto;gap:8px;margin-bottom:16px">
+        ${a.images.map((src,i)=>`<img src="${src}" style="height:200px;border-radius:8px;border:1px solid var(--border)">`).join('')}
+      </div>` : ''}
+      <div class="form-row">
+        <div class="form-field"><label>Status</label><div><span class="badge ${a.status}">${a.status}</span></div></div>
+        <div class="form-field"><label>Game</label><div>${escapeHtml(a.game)}</div></div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-field"><label>Price</label><div class="mono" style="color:var(--gold);font-size:18px">${cur}${a.price.toFixed(2)}</div></div>
+        <div class="form-field"><label>Rank</label><div>${escapeHtml(a.prestige||'-')}</div></div>
+        <div class="form-field"><label>Warranty</label><div>${a.warranty>0?a.warranty+' days':'None'}</div></div>
+      </div>
+      <div class="form-row">
+        <div class="form-field"><label>Email</label><div class="mono">${escapeHtml(a.email||'-')}</div></div>
+        <div class="form-field"><label>Password</label><div class="mono">${escapeHtml(a.pass||'-')}</div></div>
+      </div>
+      ${a.detailsEn?`<div class="form-field mb-3"><label>Details (EN)</label><div>${escapeHtml(a.detailsEn)}</div></div>`:''}
+      ${a.detailsAr?`<div class="form-field mb-3"><label>Details (AR)</label><div>${escapeHtml(a.detailsAr)}</div></div>`:''}
+      ${a.extra?`<div class="form-field"><label>Extra</label><pre style="background:var(--bg-input);padding:10px;border-radius:8px;font-size:12px;white-space:pre-wrap">${escapeHtml(a.extra)}</pre></div>`:''}
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" onclick="closeModal();editAccount(${a.id})"><i class="fa-solid fa-pen"></i> Edit</button></div>
+  `);
+}
+function editAccount(id) { openAccountModal(id); }
 
-app.post('/api/accounts/:id/sold', (req, res) => {
-  try {
-    const acc = store.accounts.find(a => a.id === parseInt(req.params.id));
-    if (!acc) return res.status(404).json({ error: 'Not found' });
-    acc.status = 'sold';
-    saveStore();
-    addLog('INFO', 'Account marked sold: ' + acc.titleEn);
-    res.json(acc);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+// ===== BULK IMPORT =====
+function openBulkModal() {
+  showModal(`
+    <div class="modal-header"><h3>Bulk Import Accounts</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-row-3">
+        <div class="form-field"><label>Game</label><input id="bulkGame" placeholder="Netflix"></div>
+        <div class="form-field"><label>Price</label><input id="bulkPrice" type="number" step="0.01" placeholder="5.00"></div>
+        <div class="form-field"><label>Warranty (days)</label><input id="bulkWarranty" type="number" value="0"></div>
+      </div>
+      <div class="form-field"><label>Credentials (one per line, format: email:password)</label>
+        <textarea id="bulkCreds" style="min-height:200px;font-family:'JetBrains Mono',monospace" placeholder="user1@email.com:pass1&#10;user2@email.com:pass2&#10;email3@x.com|pass3"></textarea></div>
+      <p class="text-muted text-sm">Separator can be <code>:</code> or <code>|</code>. These won't be posted to Discord (no image).</p>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="bulkImport()"><i class="fa-solid fa-import"></i> Import</button></div>
+  `);
+}
+async function bulkImport() {
+  const data = {
+    game: val('bulkGame'), price: val('bulkPrice'), warranty: val('bulkWarranty'),
+    credentials: document.getElementById('bulkCreds').value.split('\n').map(s=>s.trim()).filter(Boolean)
+  };
+  if (!data.credentials.length) return toast('error', 'Add at least one credential');
+  try { const r = await api('accounts/bulk', { method:'POST', body: JSON.stringify(data) }); toast('success', `Imported ${r.imported} accounts`); closeModal(); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
 
-app.post('/api/accounts/bulk', (req, res) => {
-  try {
-    const { game, price, warranty, credentials } = req.body;
-    if (!credentials || !credentials.length) return res.status(400).json({ error: 'No credentials provided' });
-    let count = 0;
-    credentials.forEach(line => {
-      let email = '', pass = line;
-      const sep = line.match(/[:|]/);
-      if (sep) { const idx = line.indexOf(sep[0]); email = line.slice(0, idx).trim(); pass = line.slice(idx + 1).trim(); }
-      store.accounts.unshift({
-        id: genId(), titleEn: game + ' Account', titleAr: 'حساب ' + game, game,
-        price: parseFloat(price) || 0, prestige: '-', stats: '-', warranty: parseInt(warranty) || 0,
-        detailsEn: 'Bulk imported', detailsAr: 'مستورد بالجملة', email, pass, extra: 'Bulk',
-        images: [], couponEligible: true, status: 'available', soldTo: null, discordMessageIds: [], createdAt: new Date().toISOString()
-      });
-      count++;
-    });
-    saveStore();
-    addLog('INFO', `Bulk imported ${count} accounts for ${game}`);
-    res.json({ imported: count });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+// ===== POOLS =====
+function renderPools(c) {
+  const pools = CACHE.pools || [];
+  const cur = CACHE.settings.currency || '$';
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header">
+        <div><h2>Auto-Delivery Pools</h2><p>Stockpiles — when customer pays, account auto-delivered instantly.</p></div>
+        <button class="btn btn-primary" onclick="openPoolModal()"><i class="fa-solid fa-plus"></i> New Pool</button>
+      </div>
+      ${pools.length === 0 ? '<div class="empty"><i class="fa-solid fa-bolt"></i><p>No pools yet. Create one for instant auto-delivery products.</p><button class="btn btn-primary" onclick="openPoolModal()"><i class="fa-solid fa-plus"></i> Create Pool</button></div>' :
+        `<div class="account-grid">${pools.map(p => `
+          <div class="account-card">
+            <div class="thumb">
+              ${p.image ? `<img src="${p.image}">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--gold);font-size:32px"><i class="fa-solid fa-bolt"></i></div>`}
+              <div class="game-tag">${p.game}</div>
+              <div style="position:absolute;top:8px;right:8px"><span class="badge ${p.stock.length>0?'available':'dead'}">${p.stock.length} in stock</span></div>
+            </div>
+            <div class="body">
+              <h4>${escapeHtml(p.name)}</h4>
+              <div class="sub">${escapeHtml(p.description||'Auto-delivery pool')}</div>
+              <div class="price">${cur}${p.price.toFixed(2)}</div>
+              <div class="meta"><span><i class="fa-solid fa-hashtag"></i> #${p.id}</span><span><i class="fa-solid fa-bolt"></i> Auto-delivery</span></div>
+            </div>
+            <div class="actions">
+              <button class="btn btn-sm" onclick="addPoolStock(${p.id})" title="Add stock"><i class="fa-solid fa-plus"></i> Stock</button>
+              <button class="btn btn-sm btn-danger" onclick="deletePool(${p.id})"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          </div>`).join('')}</div>`}
+    </div>`;
+}
+function openPoolModal() {
+  showModal(`
+    <div class="modal-header"><h3>Create Auto-Delivery Pool</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-row"><div class="form-field"><label>Pool Name *</label><input id="p_name" placeholder="Netflix Premium 1-Month"></div>
+      <div class="form-field"><label>Game / Category</label><input id="p_game" value="Other"></div></div>
+      <div class="form-row"><div class="form-field"><label>Price *</label><input id="p_price" type="number" step="0.01" placeholder="5.00"></div>
+      <div class="form-field"><label>Cover Image (optional)</label><input type="file" id="p_image" accept="image/*"></div></div>
+      <div class="form-field"><label>Description</label><textarea id="p_desc" placeholder="Instant auto-delivery after payment"></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="savePool()"><i class="fa-solid fa-bolt"></i> Create Pool</button></div>
+  `);
+}
+async function savePool() {
+  const file = document.getElementById('p_image').files[0];
+  let image = null;
+  if (file) { image = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
+  const data = {
+    name: val('p_name'), game: val('p_game') || 'Other', price: parseFloat(val('p_price')) || 0,
+    description: val('p_desc'), image
+  };
+  if (!data.name || !data.price) return toast('error', 'Name and price required');
+  try { await api('pools', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Pool created & posted to Discord'); closeModal(); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+function addPoolStock(id) {
+  showModal(`
+    <div class="modal-header"><h3>Add Stock to Pool</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-field"><label>Credentials (one per line: email:password)</label>
+        <textarea id="poolStockCreds" style="min-height:200px;font-family:'JetBrains Mono',monospace" placeholder="user1@email.com:pass1&#10;user2@email.com:pass2"></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitPoolStock(${id})"><i class="fa-solid fa-plus"></i> Add Stock</button></div>
+  `);
+}
+async function submitPoolStock(id) {
+  const creds = document.getElementById('poolStockCreds').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  if (!creds.length) return toast('error', 'Add at least one credential');
+  try { const r = await api(`pools/${id}/stock`, { method:'POST', body: JSON.stringify({ credentials: creds }) }); toast('success', `Added ${r.added}. Total stock: ${r.total}`); closeModal(); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+async function deletePool(id) {
+  if (!confirm('Delete this pool? Stock will be lost.')) return;
+  try { await api('pools/'+id, { method:'DELETE' }); toast('success', 'Pool deleted'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
 
-// ===== ORDERS =====
-app.get('/api/orders', (req, res) => {
-  try {
-    let { search, status } = req.query;
-    let filtered = store.orders;
-    if (search) { const s = String(search).toLowerCase(); filtered = filtered.filter(o => o.id.toLowerCase().includes(s) || (o.cust||'').toLowerCase().includes(s)); }
-    if (status && status !== 'All') filtered = filtered.filter(o => o.status === status);
-    res.json(filtered);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+// ===== DIGITAL PRODUCTS =====
+function renderDigital(c) {
+  const products = CACHE.digital || [];
+  const cur = CACHE.settings.currency || '$';
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header">
+        <div><h2>Digital Products</h2><p>${products.length} products • PSN cards, Xbox subs, Netflix, CD keys — instant code delivery</p></div>
+        <button class="btn btn-primary" onclick="openDigitalModal()"><i class="fa-solid fa-plus"></i> New Digital Product</button>
+      </div>
+      ${products.length === 0 ? '<div class="empty"><i class="fa-solid fa-ticket"></i><p>No digital products yet. Add PSN cards, Xbox subs, Netflix codes, CD keys, etc.</p><button class="btn btn-primary" onclick="openDigitalModal()"><i class="fa-solid fa-plus"></i> Create Digital Product</button></div>' :
+        `<div class="account-grid">${products.map(p => `
+          <div class="account-card">
+            <div class="thumb">
+              ${p.image ? `<img src="${p.image}">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--accent);font-size:32px"><i class="fa-solid fa-ticket"></i></div>`}
+              <div class="game-tag">${escapeHtml(p.platform)}</div>
+              <div style="position:absolute;top:8px;right:8px"><span class="badge ${p.stock&&p.stock.length>0?'available':'dead'}">${p.stock?p.stock.length:0} in stock</span></div>
+            </div>
+            <div class="body">
+              <h4>${escapeHtml(p.titleEn)}</h4>
+              <div class="sub">${escapeHtml(p.titleAr||'')} • ${escapeHtml(p.productType)}</div>
+              <div class="price">${cur}${p.price.toFixed(2)}</div>
+              <div class="meta"><span><i class="fa-solid fa-hashtag"></i> #${p.id}</span><span><i class="fa-solid fa-bolt"></i> Instant delivery</span></div>
+            </div>
+            <div class="actions">
+              <button class="btn btn-sm" onclick="addDigitalStock(${p.id})" title="Add codes"><i class="fa-solid fa-plus"></i> Codes</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteDigital(${p.id})"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          </div>`).join('')}</div>`}
+    </div>`;
+}
+function openDigitalModal() {
+  showModal(`
+    <div class="modal-header"><h3>New Digital Product</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-row"><div class="form-field"><label>Title (English) *</label><input id="d_titleEn" placeholder="PSN $50 Gift Card"></div>
+      <div class="form-field"><label>Title (Arabic)</label><input id="d_titleAr" placeholder="بطاقة PSN 50$"></div></div>
+      <div class="form-row-3">
+        <div class="form-field"><label>Platform *</label><select id="d_platform">
+          <option>PSN</option><option>Xbox</option><option>Netflix</option><option>Steam</option>
+          <option>Spotify</option><option>iTunes</option><option>Google Play</option><option>Amazon</option>
+          <option>CD Key</option><option>Other</option>
+        </select></div>
+        <div class="form-field"><label>Product Type</label><select id="d_productType">
+          <option value="code">Code / Key</option><option value="subscription">Subscription</option>
+          <option value="gift_card">Gift Card</option><option value="cd_key">CD Key</option>
+        </select></div>
+        <div class="form-field"><label>Price *</label><input id="d_price" type="number" step="0.01" placeholder="29.99"></div>
+      </div>
+      <div class="form-row"><div class="form-field"><label>Description (EN)</label><textarea id="d_descEn" placeholder="Valid for Saudi region. Instant delivery after payment."></textarea></div>
+      <div class="form-field"><label>Description (AR)</label><textarea id="d_descAr" placeholder="صالح لمنطقة السعودية. تسليم فوري بعد الدفع."></textarea></div></div>
+      <div class="form-field"><label>Cover Image (optional)</label><input type="file" id="d_image" accept="image/*"></div>
+      <div class="form-field"><label>Initial Stock — one code per line (optional, can add later)</label>
+        <textarea id="d_stock" style="min-height:100px;font-family:'JetBrains Mono',monospace" placeholder="ABCD-EFGH-IJKL&#10;MNOP-QRST-UVWX&#10;..."></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDigital()"><i class="fa-solid fa-save"></i> Create</button></div>
+  `);
+}
+async function saveDigital() {
+  const file = document.getElementById('d_image').files[0];
+  let image = null;
+  if (file) { image = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
+  const stockText = document.getElementById('d_stock').value;
+  const stock = stockText ? stockText.split('\n').map(s => s.trim()).filter(Boolean).map(line => {
+    let code = line, notes = '';
+    if (line.includes('|')) { const parts = line.split('|'); code = parts[0].trim(); notes = parts.slice(1).join('|').trim(); }
+    return { code, notes, addedAt: new Date().toISOString() };
+  }) : [];
+  const data = {
+    titleEn: val('d_titleEn'), titleAr: val('d_titleAr'),
+    platform: val('d_platform'), productType: val('d_productType'),
+    price: parseFloat(val('d_price')) || 0,
+    descriptionEn: val('d_descEn'), descriptionAr: val('d_descAr'),
+    image, stock
+  };
+  if (!data.titleEn || !data.price) return toast('error', 'Title and price required');
+  try { await api('digital', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Digital product created & posted to Discord'); closeModal(); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+function addDigitalStock(id) {
+  showModal(`
+    <div class="modal-header"><h3>Add Codes to Digital Product</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <p class="text-sm text-muted mb-3">One code per line. Format: <code>code</code> or <code>code | optional notes</code></p>
+      <div class="form-field"><label>Codes</label>
+        <textarea id="digStockCodes" style="min-height:200px;font-family:'JetBrains Mono',monospace" placeholder="ABCD-EFGH-IJKL&#10;MNOP-QRST-UVWX | 30 days sub"></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitDigitalStock(${id})"><i class="fa-solid fa-plus"></i> Add Codes</button></div>
+  `);
+}
+async function submitDigitalStock(id) {
+  const codes = document.getElementById('digStockCodes').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  if (!codes.length) return toast('error', 'Add at least one code');
+  try { const r = await api(`digital/${id}/stock`, { method:'POST', body: JSON.stringify({ codes }) }); toast('success', `Added ${r.added}. Total stock: ${r.total}`); closeModal(); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+async function deleteDigital(id) {
+  if (!confirm('Delete this digital product? Stock codes will be lost.')) return;
+  try { await api('digital/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
 
-app.post('/api/orders/:id/deliver', (req, res) => {
-  try {
-    const order = store.orders.find(o => o.id === req.params.id);
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    const acc = store.accounts.find(a => a.id === parseInt(order.itemId));
-    if (acc) { order.email = acc.email; order.pass = acc.pass; acc.status = 'sold'; acc.soldTo = order.custId; }
-    order.status = 'Delivered';
-    saveStore();
-    if (order.custId && client.isReady()) {
-      client.users.fetch(order.custId).then(user => {
-        user.send(`✅ **${store.settings.storeName} — تم التسليم / Delivered**\n\n**${order.item}**\n📧 Email: \`${order.email}\`\n🔑 Password: \`${order.pass}\`\n\nشكراً لشرائك من ${store.settings.storeName}!`).catch(() => {});
-      }).catch(() => {});
-    }
-    addLog('INFO', `Delivered ${order.id} manually via panel.`);
-    res.json(order);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/orders/:id/refund', (req, res) => {
-  try {
-    const order = store.orders.find(o => o.id === req.params.id);
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    order.status = 'Refunded';
-    const acc = store.accounts.find(a => a.id === parseInt(order.itemId));
-    if (acc) { acc.status = 'available'; acc.soldTo = null; }
-    saveStore();
-    addLog('WARN', `Order ${order.id} refunded`);
-    res.json(order);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ===== PAYMENTS =====
-app.get('/api/payments', (req, res) => {
-  try {
-    let filtered = store.paymentRequests;
-    if (req.query.status && req.query.status !== 'All') filtered = filtered.filter(p => p.status === req.query.status);
-    res.json(filtered);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/payments/:id/approve', async (req, res) => {
-  try {
-    const pr = store.paymentRequests.find(p => p.id === req.params.id);
-    if (!pr) return res.status(404).json({ error: 'Request missing' });
-    pr.status = 'Approved';
-    pr.approvedAt = new Date().toISOString();
-
-    const acc = store.accounts.find(a => a.id === pr.accountId);
-    let deliveredEmail = pr.deliveredEmail || (acc ? acc.email : '');
-    let deliveredPass = pr.deliveredPass || (acc ? acc.pass : '');
-    let deliveredCode = '';          // for digital products
-    let isBoosting = !!pr.boostingServiceId;
-    let isDigital = !!pr.digitalProductId;
-    let isCamo = !!pr.camoServiceId;
-
-    // POOL purchase — pull from pool stock
-    if (pr.poolId) {
-      const pool = store.pools.find(p => p.id === pr.poolId);
-      if (pool && pool.stock && pool.stock.length > 0) {
-        const item = pool.stock.shift();
-        deliveredEmail = item.email;
-        deliveredPass = item.pass;
-        saveStore();
-      }
-    }
-    // DIGITAL purchase — pull a code from digital product stock
-    else if (pr.digitalProductId) {
-      const dig = store.digitalProducts.find(d => d.id === pr.digitalProductId);
-      if (dig && dig.stock && dig.stock.length > 0) {
-        const item = dig.stock.shift();
-        deliveredCode = item.code;
-        saveStore();
-      }
-    }
-    // BOOSTING — don't deliver anything yet, mark ticket as boosting_in_progress
-    else if (pr.boostingServiceId) {
-      // handled below — no instant delivery
-    }
-    // CAMO — same as boosting, service-based, mark ticket as camo_in_progress
-    else if (pr.camoServiceId) {
-      // handled below — no instant delivery
-    }
-    // REGULAR account
-    else if (acc) {
-      acc.status = 'sold';
-      acc.soldTo = pr.userId;
-    }
-
-    const finalAmount = pr.discountedAmount || pr.amount;
-
-    // For boosting/camo: order is 'In Progress', not 'Delivered' yet
-    const orderStatus = (isBoosting || isCamo) ? 'In Progress' : 'Delivered';
-    const order = {
-      id: 'ORD-' + String(1000 + store.orders.length + 1),
-      cust: pr.userName, custId: pr.userId,
-      item: pr.accountTitle, itemId: String(pr.accountId),
-      poolId: pr.poolId || null, digitalProductId: pr.digitalProductId || null,
-      boostingServiceId: pr.boostingServiceId || null, camoServiceId: pr.camoServiceId || null,
-      amount: finalAmount, originalAmount: pr.amount, couponCode: pr.couponCode || null,
-      status: orderStatus,
-      paymentMethod: pr.method, date: new Date().toISOString().slice(0, 16).replace('T', ' '),
-      email: deliveredEmail, pass: deliveredPass, code: deliveredCode
-    };
-    store.orders.unshift(order);
-
-    // Sync customer data
-    let customer = store.customers.find(c => c.discordId === pr.userId);
-    if (!customer) {
-      customer = { id: 'u' + genId(), name: pr.userName, discordId: pr.userId, trust: 'Verified', spent: 0, purchases: 0, notes: '', joined: new Date().toISOString().slice(0, 10) };
-      store.customers.push(customer);
-    }
-    customer.purchases += 1;
-    customer.spent += finalAmount;
-
-    // Increment coupon usage
-    if (pr.couponCode) {
-      const c = store.coupons.find(c => c.code === pr.couponCode);
-      if (c) c.uses = (c.uses || 0) + 1;
-    }
-
-    // ===== ALWAYS SEND DM TO BUYER (professional receipt embed) =====
-    const brandColor = store.settings.color || 0x9b59ff;
-    const cur = store.settings.currency;
-    const storeName = store.settings.storeName;
-
-    async function sendBuyerDM() {
-      if (!pr.userId || !client.isReady()) return;
-      try {
-        const user = await client.users.fetch(pr.userId);
-        let dmEmbed;
-        if (isCamo) {
-          dmEmbed = new EmbedBuilder()
-            .setColor(brandColor)
-            .setTitle('🎨 تم تأكيد طلبك — فتح الكاموهات')
-            .setDescription(
-              `**مرحباً ${pr.userName}! 👋**\n\n` +
-              `تم استلام دفعتك بنجاح وبدأنا العمل على طلبك.\n\n` +
-              `**📋 تفاصيل الطلب:**\n` +
-              `🎨 الخدمة: ${pr.accountTitle}\n` +
-              `💰 المبلغ: \`${cur}${finalAmount.toFixed(2)}\`\n` +
-              `💳 الدفع: \`${pr.method}\`\n` +
-              `🎫 رقم العملية: \`${pr.id}\`\n\n` +
-              `**⏳ الخطوة التالية:**\n` +
-              `أرسل بيانات حسابك في التذكرة لبدء فتح الكاموهات.\n` +
-              `⏱️ المدة المتوقعة: \`24-72 ساعة\`\n\n` +
-              `شكراً لثقتك في **${storeName}**! 🙏`
-            )
-            .setFooter({ text: storeName + ' • احتفظ بهذه الرسالة' })
-            .setTimestamp();
-        } else if (isBoosting) {
-          dmEmbed = new EmbedBuilder()
-            .setColor(brandColor)
-            .setTitle('🚀 تم تأكيد طلبك — البوست قيد التنفيذ')
-            .setDescription(
-              `**مرحباً ${pr.userName}! 👋**\n\n` +
-              `تم استلام دفعتك بنجاح وبدأنا العمل على طلبك.\n\n` +
-              `**📋 تفاصيل الطلب:**\n` +
-              `🚀 الخدمة: ${pr.accountTitle}\n` +
-              `💰 المبلغ: \`${cur}${finalAmount.toFixed(2)}\`\n` +
-              `💳 الدفع: \`${pr.method}\`\n` +
-              `🎫 رقم العملية: \`${pr.id}\`\n\n` +
-              `**⏳ الخطوة التالية:**\n` +
-              `أرسل بيانات حسابك في التذكرة لبدء البوست.\n` +
-              `⏱️ المدة المتوقعة: \`24-48 ساعة\`\n\n` +
-              `شكراً لثقتك في **${storeName}**! 🙏`
-            )
-            .setFooter({ text: storeName + ' • احتفظ بهذه الرسالة' })
-            .setTimestamp();
-        } else if (isDigital && deliveredCode) {
-          dmEmbed = new EmbedBuilder()
-            .setColor(0x3ddc84)
-            .setTitle('🎫 تم تسليم كودك بنجاح!')
-            .setDescription(
-              `**مرحباً ${pr.userName}! 👋**\n\n` +
-              `تم تأكيد دفعتك وإليك الكود الخاص بك:\n\n` +
-              `**📋 تفاصيل الطلب:**\n` +
-              `🎫 المنتج: ${pr.accountTitle}\n` +
-              `💰 المبلغ: \`${cur}${finalAmount.toFixed(2)}\`\n` +
-              `💳 الدفع: \`${pr.method}\`\n` +
-              `🎫 رقم العملية: \`${pr.id}\`\n\n` +
-              `**🎁 الكود الخاص بك:**\n` +
-              `\`\`\`${deliveredCode}\`\`\`\n\n` +
-              `شكراً لشرائك من **${storeName}**! 🙏\n` +
-              `لأي استفسار، افتح تذكرة في السيرفر.`
-            )
-            .setFooter({ text: storeName + ' • احتفظ بهذا الكود في مكان آمن' })
-            .setTimestamp();
-        } else {
-          dmEmbed = new EmbedBuilder()
-            .setColor(0x3ddc84)
-            .setTitle('✅ تم تسليم حسابك بنجاح!')
-            .setDescription(
-              `**مرحباً ${pr.userName}! 👋**\n\n` +
-              `تم تأكيد دفعتك وإليك بيانات حسابك:\n\n` +
-              `**📋 تفاصيل الطلب:**\n` +
-              `📦 المنتج: ${pr.accountTitle}\n` +
-              `💰 المبلغ: \`${cur}${finalAmount.toFixed(2)}\`\n` +
-              `💳 الدفع: \`${pr.method}\`\n` +
-              `🎫 رقم العملية: \`${pr.id}\`\n\n` +
-              `**🔑 بيانات الحساب:**\n` +
-              `📧 Email: \`${deliveredEmail}\`\n` +
-              `🔑 Password: \`${deliveredPass}\`\n\n` +
-              `شكراً لشرائك من **${storeName}**! 🙏\n` +
-              `لأي استفسار، افتح تذكرة في السيرفر.`
-            )
-            .setFooter({ text: storeName + ' • احتفظ ببياناتك في مكان آمن' })
-            .setTimestamp();
-        }
-        await user.send({ embeds: [dmEmbed] });
-        addLog('INFO', `DM sent to ${pr.userName} for ${pr.id}`);
-      } catch (e) {
-        addLog('WARN', `Could not DM ${pr.userName}: ${e.message}`);
-      }
-    }
-
-    // ===== DELIVER IN TICKET (beautified, Arabic-first) =====
-    const ticket = store.tickets.find(t => t.paymentId === pr.id);
-    if (ticket && ticket.channelId && client.isReady()) {
-      const ticketChannel = client.channels.cache.get(ticket.channelId);
-      if (ticketChannel) {
-        let deliverEmbed;
-        if (isCamo) {
-          // CAMO: payment confirmed, ask for account credentials
-          ticket.status = 'camo_in_progress';
-          const camoSvc = store.camoServices.find(s => s.id === pr.camoServiceId);
-          deliverEmbed = new EmbedBuilder()
-            .setColor(brandColor)
-            .setTitle('✅ تم تأكيد الدفع — بدء فتح الكاموهات')
-            .setDescription(
-              `**مرحباً ${pr.userName}! 👋**\n\n` +
-              `تم استلام دفعتك بنجاح ✅\n\n` +
-              `**📋 تفاصيل الطلب:**\n` +
-              `🎨 الخدمة: ${pr.accountTitle}\n` +
-              `💰 المبلغ: \`${cur}${finalAmount.toFixed(2)}\`\n` +
-              `🎫 رقم العملية: \`${pr.id}\`\n\n` +
-              `**⏳ الخطوة التالية:**\n` +
-              `أرسل بيانات حسابك هنا لبدء فتح الكاموهات:\n` +
-              `📧 Email + 🔑 Password + أي معلومات مطلوبة\n\n` +
-              `⏱️ المدة المتوقعة: \`${camoSvc ? camoSvc.eta : '24-72 ساعة'}\`\n` +
-              `🎨 سيتم إشعارك فور اكتمال فتح الكاموهات!`
-            )
-            .setFooter({ text: storeName + ' • التذكرة مفتوحة حتى اكتمال الخدمة' })
-            .setTimestamp();
-          await ticketChannel.send({ embeds: [deliverEmbed] });
-          addLog('INFO', `Camo ticket ${ticket.id} now in progress for ${pr.userName}`);
-        } else if (isBoosting) {
-          // BOOSTING: payment confirmed, ask for account credentials
-          ticket.status = 'boosting_in_progress';
-          deliverEmbed = new EmbedBuilder()
-            .setColor(brandColor)
-            .setTitle('✅ تم تأكيد الدفع — بدء البوست')
-            .setDescription(
-              `**مرحباً ${pr.userName}! 👋**\n\n` +
-              `تم استلام دفعتك بنجاح ✅\n\n` +
-              `**📋 تفاصيل الطلب:**\n` +
-              `🚀 الخدمة: ${pr.accountTitle}\n` +
-              `💰 المبلغ: \`${cur}${finalAmount.toFixed(2)}\`\n` +
-              `🎫 رقم العملية: \`${pr.id}\`\n\n` +
-              `**⏳ الخطوة التالية:**\n` +
-              `أرسل بيانات حسابك هنا لبدء البوست:\n` +
-              `📧 Email + 🔑 Password + أي معلومات مطلوبة\n\n` +
-              `⏱️ المدة المتوقعة: \`${ticket.boostingEta || '24-48 ساعة'}\`\n` +
-              `🚀 سيتم إشعارك فور اكتمال البوست!`
-            )
-            .setFooter({ text: storeName + ' • التذكرة مفتوحة حتى اكتمال البوست' })
-            .setTimestamp();
-          await ticketChannel.send({ embeds: [deliverEmbed] });
-          addLog('INFO', `Boosting ticket ${ticket.id} now in progress for ${pr.userName}`);
-        } else {
-          // DELIVER product (account / pool / digital code)
-          let deliverText = '';
-          if (isDigital && deliveredCode) {
-            deliverText = `🎫 **الكود:**\n\`\`\`${deliveredCode}\`\`\``;
-          } else {
-            deliverText = `📧 **Email:** \`${deliveredEmail}\`\n🔑 **Password:** \`${deliveredPass}\``;
+// ===== BOOSTING SERVICES =====
+function renderBoosting(c) {
+  const services = CACHE.boosting || [];
+  const cur = CACHE.settings.currency || '$';
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header">
+        <div><h2>Boosting Services</h2><p>${services.length} services • CoD/Warzone rank, prestige, gun level boosting</p></div>
+        <button class="btn btn-primary" onclick="openBoostingModal()"><i class="fa-solid fa-plus"></i> New Boosting Service</button>
+      </div>
+      ${services.length === 0 ? '<div class="empty"><i class="fa-solid fa-rocket"></i><p>No boosting services yet. Create rank boosts, prestige leveling, gun leveling for CoD / Warzone.</p><button class="btn btn-primary" onclick="openBoostingModal()"><i class="fa-solid fa-plus"></i> Create Boosting Service</button></div>' :
+        `<div class="account-grid">${services.map(s => {
+          // Build detail line based on service type
+          let serviceDetail = '';
+          if (s.serviceType === 'rank') {
+            if (s.rankList && s.rankList.length >= 2) {
+              const firstRank = s.rankList[0];
+              const lastRank = s.rankList[s.rankList.length-1];
+              serviceDetail = `${firstRank.emoji||'🥉'} ${escapeHtml(firstRank.name)} → ${lastRank.emoji||'👑'} ${escapeHtml(lastRank.name)} (${(s.rankTiers||3)} tiers)`;
+            } else {
+              serviceDetail = `${escapeHtml(s.fromRank||'-')} → ${escapeHtml(s.toRank||'-')}`;
+            }
+          } else if (s.serviceType === 'prestige') {
+            serviceDetail = `${s.prestigeEmoji||'🎖️'} Max Prestige ${s.maxPrestige||'-'}`;
+          } else if (s.serviceType === 'gun_level') {
+            if (s.gunList && s.gunList.length > 0) {
+              serviceDetail = `${s.gunList.length} guns available`;
+            } else {
+              serviceDetail = `${escapeHtml(s.gunName||'-')}: ${escapeHtml(s.fromLevel||'-')} → ${escapeHtml(s.toLevel||'-')}`;
+            }
           }
-          deliverEmbed = new EmbedBuilder()
-            .setColor(0x3ddc84)
-            .setTitle('✅ تم تأكيد الدفع — التسليم')
-            .setDescription(
-              `**مرحباً ${pr.userName}! 👋**\n\n` +
-              `تم تأكيد دفعتك بنجاح ✅\n\n` +
-              `**📋 تفاصيل الطلب:**\n` +
-              `📦 المنتج: ${pr.accountTitle}\n` +
-              `💰 المبلغ: \`${cur}${finalAmount.toFixed(2)}\`\n` +
-              `💳 الدفع: \`${pr.method}\`\n` +
-              `🎫 رقم العملية: \`${pr.id}\`\n\n` +
-              `**🎁 التسليم:**\n${deliverText}\n\n` +
-              `🙏 شكراً لشرائك من **${storeName}**!\n` +
-              `تم إرسال نسخة إلى رسائلك الخاصة 📩`
-            )
-            .setFooter({ text: storeName + ' • سيتم إغلاق التذكرة تلقائياً خلال ' + (store.settings.autoCloseSeconds || 15) + ' ثانية' })
-            .setTimestamp();
-          await ticketChannel.send({ embeds: [deliverEmbed] });
-          ticket.status = 'closed';
-          ticket.closedAt = new Date().toISOString();
-          setTimeout(async () => {
-            try { await ticketChannel.delete('Purchase completed — ticket auto-closed'); }
-            catch (err) { addLog('WARN', `Failed to delete ticket channel: ${err.message}`); }
-          }, (store.settings.autoCloseSeconds || 15) * 1000);
-        }
-        saveStore();
-      }
-    }
-
-    // ===== ALWAYS SEND DM (regardless of ticket) =====
-    await sendBuyerDM();
-
-
-    sendLogToDiscord(`✅ Payment approved: \`${pr.id}\` for **${pr.accountTitle}** ($${finalAmount}) by ${pr.userName}`);
-    addLog('INFO', `Payment approved & delivered: ${pr.id}`);
-    saveStore();
-    res.json(pr);
-  } catch (e) {
-    console.error('Approve payment error:', e);
-    res.status(500).json({ error: e.message });
+          return `
+          <div class="account-card">
+            <div class="thumb">
+              ${s.images&&s.images[0] ? `<img src="${s.images[0]}">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--accent);font-size:32px"><i class="fa-solid fa-rocket"></i></div>`}
+              <div class="game-tag">${escapeHtml(s.game)}</div>
+              <div style="position:absolute;top:8px;right:8px"><span class="badge available">${s.serviceType.replace('_',' ')}</span></div>
+            </div>
+            <div class="body">
+              <h4>${escapeHtml(s.titleEn)}</h4>
+              <div class="sub">${escapeHtml(s.titleAr||'')}</div>
+              <div class="price">${cur}${s.price.toFixed(2)} <span class="text-xs text-muted" style="font-weight:400">starting</span></div>
+              <div class="meta">
+                <span><i class="fa-solid fa-chart-line"></i> ${serviceDetail}</span>
+                <span><i class="fa-solid fa-clock"></i> ${escapeHtml(s.eta||'')}</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn btn-sm" onclick="viewBoosting(${s.id})" title="View"><i class="fa-solid fa-eye"></i></button>
+              <button class="btn btn-sm" onclick="editBoosting(${s.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
+              <button class="btn btn-sm" onclick="repostBoosting(${s.id})" title="Re-post to Discord"><i class="fa-solid fa-rotate"></i></button>
+              <button class="btn btn-sm btn-danger" onclick="deleteBoosting(${s.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          </div>`;
+        }).join('')}</div>`}
+    </div>`;
+}
+function viewBoosting(id) {
+  const s = CACHE.boosting.find(x => x.id === id); if (!s) return;
+  const cur = CACHE.settings.currency || '$';
+  let detailHtml = '';
+  if (s.serviceType === 'rank' && s.rankList && s.rankList.length) {
+    detailHtml = `<div class="form-field"><label>Available Ranks (${s.rankTiers||3} tiers each)</label><div>${s.rankList.map(r => `<div style="padding:4px 0;border-bottom:1px solid var(--border)">${r.emoji||''} <b>${escapeHtml(r.name)}</b> ${r.name===s.rankList[s.rankList.length-1].name?'<span class="text-xs text-muted">(single-tier)</span>':'<span class="text-xs text-muted">— I, II, III</span>'}</div>`).join('')}</div></div>`;
+  } else if (s.serviceType === 'prestige') {
+    detailHtml = `<div class="form-field"><label>Available Levels</label><div>${s.prestigeEmoji||'🎖️'} 1 to ${s.maxPrestige} (${cur}${s.pricePerPrestige}/level)</div></div>`;
+  } else if (s.serviceType === 'gun_level' && s.gunList && s.gunList.length) {
+    detailHtml = `<div class="form-field"><label>Available Guns</label><div>${s.gunList.map(g => `<div style="padding:4px 0;border-bottom:1px solid var(--border)">${g.emoji||'🔫'} <b>${escapeHtml(g.name)}</b> — ${cur}${g.pricePerLevel}/level (max ${s.maxGunLevel})</div>`).join('')}</div></div>`;
   }
-});
+  showModal(`
+    <div class="modal-header"><h3>${escapeHtml(s.titleEn)}</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      ${s.images && s.images.length ? `<div style="display:flex;overflow-x:auto;gap:8px;margin-bottom:16px">${s.images.map(src=>`<img src="${src}" style="height:180px;border-radius:8px;border:1px solid var(--border)">`).join('')}</div>` : ''}
+      <div class="form-row-3">
+        <div class="form-field"><label>Game</label><div>${escapeHtml(s.game)}</div></div>
+        <div class="form-field"><label>Type</label><div>${s.serviceType.replace('_',' ')}</div></div>
+        <div class="form-field"><label>ETA</label><div>${escapeHtml(s.eta||'-')}</div></div>
+      </div>
+      <div class="form-row">
+        <div class="form-field"><label>Starting Price</label><div class="mono" style="color:var(--gold);font-size:18px">${cur}${s.price.toFixed(2)}</div></div>
+        <div class="form-field"><label>${s.serviceType==='rank'?'Price per Tier':s.serviceType==='prestige'?'Price per Level':'—'}</label><div class="mono">${s.serviceType==='rank'?cur+s.pricePerRank:s.serviceType==='prestige'?cur+s.pricePerPrestige:'-'}</div></div>
+      </div>
+      ${detailHtml}
+      ${s.descriptionEn?`<div class="form-field"><label>Description (EN)</label><div>${escapeHtml(s.descriptionEn)}</div></div>`:''}
+      ${s.descriptionAr?`<div class="form-field"><label>Description (AR)</label><div>${escapeHtml(s.descriptionAr)}</div></div>`:''}
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" onclick="closeModal();editBoosting(${s.id})"><i class="fa-solid fa-pen"></i> Edit</button></div>
+  `);
+}
+function editBoosting(id) { openBoostingModal(id); }
+async function repostBoosting(id) {
+  if (!confirm('Re-post this boosting service to Discord? Old message will be deleted.')) return;
+  try { await api(`boosting/${id}/repost`, { method:'POST' }); toast('success', 'Re-posted to Discord'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+// Load BO7 guns into boosting gunList textarea (categorized format with # headers, $13/gun default)
+function loadBo7GunsToBoosting(scope) {
+  const ta = document.getElementById('b_gunList');
+  if (!ta) return;
+  let text;
+  if (scope === 'all') {
+    // Load all categories with # headers
+    text = BO7_CATALOG.gunsByCategory.map(cat => {
+      const header = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.category;
+      const guns = cat.weapons.map(w => (w.emoji||cat.emoji||'🔫') + ' ' + w.name + ':13');
+      return header + '\n' + guns.join('\n');
+    }).join('\n');
+  } else {
+    // Load single category
+    const cat = BO7_CATALOG.gunsByCategory.find(c => c.category === scope);
+    if (!cat) return;
+    text = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.category + '\n' +
+      cat.weapons.map(w => (w.emoji||cat.emoji||'🔫') + ' ' + w.name + ':13').join('\n');
+  }
+  ta.value = text;
+  const lineCount = text.split('\n').filter(l => l.trim() && !l.startsWith('#')).length;
+  toast('success', `Loaded ${lineCount} BO7 guns${scope!=='all'?' ('+scope+')':''} @ $13/gun`);
+}
+function openBoostingModal(editId) {
+  const edit = editId ? CACHE.boosting.find(s => s.id === editId) : null;
+  window._boostImages = edit && edit.images ? [...edit.images] : [];
+  const isEdit = !!edit;
+  // Pre-fill values for edit mode
+  const v = (k, d='') => edit ? (edit[k] !== undefined ? edit[k] : d) : d;
+  // For rankList/gunList (arrays of objects), convert back to text format
+  const rankListText = edit && edit.rankList && edit.rankList.length
+    ? edit.rankList.map(r => (r.emoji ? (typeof r.emoji === 'object' ? `<:${r.emoji.name}:${r.emoji.id}>` : r.emoji) + ' ' : '') + r.name).join('\n')
+    : catalogToText(BO7_CATALOG.ranks);
+  const gunListText = edit && edit.gunList && edit.gunList.length
+    ? (edit.gunCategories && edit.gunCategories.length
+        ? edit.gunCategories.map(cat => {
+            const header = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.name;
+            const guns = cat.guns.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name + ':' + (g.pricePerLevel || 13));
+            return header + '\n' + guns.join('\n');
+          }).join('\n')
+        : edit.gunList.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name + ':' + (g.pricePerLevel || 13)).join('\n'))
+    : BO7_CATALOG.gunsByCategory.slice(0, 2).map(cat => {
+        const header = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.category;
+        const guns = cat.weapons.map(w => (w.emoji||cat.emoji||'🔫') + ' ' + w.name + ':13');
+        return header + '\n' + guns.join('\n');
+      }).join('\n');
 
-app.post('/api/payments/:id/reject', async (req, res) => {
+  showModal(`
+    <div class="modal-header"><h3>${isEdit?'Edit':'New'} Boosting Service</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-row"><div class="form-field"><label>Title (English) *</label><input id="b_titleEn" value="${escapeAttr(v('titleEn','Warzone Rank Boost'))}" placeholder="Warzone Rank Boost"></div>
+      <div class="form-field"><label>Title (Arabic)</label><input id="b_titleAr" value="${escapeAttr(v('titleAr',''))}" placeholder="بوست رتبة وورزون"></div></div>
+      <div class="form-row-3">
+        <div class="form-field"><label>Game *</label><select id="b_game">
+          ${['Call of Duty Black Ops 7','Call of Duty Warzone','Call of Duty','Call of Duty Mobile','Valorant','Fortnite','Apex Legends','Other'].map(g=>`<option ${v('game','Call of Duty Black Ops 7')===g?'selected':''}>${g}</option>`).join('')}
+        </select></div>
+        <div class="form-field"><label>Service Type</label><select id="b_serviceType" onchange="toggleBoostFields()">
+          ${[['rank','Rank Boost (from → to)'],['prestige','Prestige Level'],['gun_level','Gun Level']].map(([val,lbl])=>`<option value="${val}" ${v('serviceType','rank')===val?'selected':''}>${lbl}</option>`).join('')}
+        </select></div>
+        <div class="form-field"><label>Starting Price (display) *</label><input id="b_price" type="number" step="0.01" value="${escapeAttr(v('price',15))}" placeholder="15.00"></div>
+      </div>
+
+      <div id="b_rankFields">
+        <div class="form-row">
+          <div class="form-field"><label>Available Ranks (emoji + name, one per line, lowest → highest)</label>
+            <div class="flex gap-2 mb-2" style="flex-wrap:wrap">
+              <button type="button" class="btn btn-sm" onclick="document.getElementById('b_rankList').value=catalogToText(BO7_CATALOG.ranks)"><i class="fa-solid fa-crown"></i> Load Warzone Ranks</button>
+              <button type="button" class="btn btn-sm" onclick="document.getElementById('b_rankList').value=''"><i class="fa-solid fa-eraser"></i> Clear</button>
+            </div>
+            <textarea id="b_rankList" style="min-height:140px;font-family:'JetBrains Mono',monospace" placeholder="🥉 Bronze&#10;🥈 Silver&#10;🥇 Gold&#10;💎 Diamond&#10;👑 Top 250">${escapeHtml(rankListText)}</textarea></div>
+          <div class="form-field"><label>Tiers per Rank</label><input id="b_rankTiers" type="number" min="1" max="10" value="${v('rankTiers',3)}">
+            <p class="text-xs text-muted mt-2">Each rank expands into N tiers: I, II, III...<br>e.g. Bronze with 3 tiers → Bronze I, Bronze II, Bronze III<br>Last rank (Top 250) is always single-tier</p>
+            <label class="mt-3">Price per Tier ($)</label><input id="b_pricePerRank" type="number" step="0.01" value="${v('pricePerRank',5)}">
+            <p class="text-xs text-muted mt-2">Customer picks from→to. Price = tiers crossed × this.<br>e.g. Bronze I → Gold I = 3 tiers × $5 = $13</p></div>
+        </div>
+      </div>
+
+      <div id="b_prestigeFields" class="hidden">
+        <div class="form-row">
+          <div class="form-field"><label>Max Prestige Level</label><input id="b_maxPrestige" type="number" value="${v('maxPrestige',BO7_CATALOG.prestige.max)}" placeholder="10">
+            <button type="button" class="btn btn-sm mt-2" onclick="document.getElementById('b_maxPrestige').value=${BO7_CATALOG.prestige.max};document.getElementById('b_pricePerPrestige').value=${BO7_CATALOG.prestige.pricePerLevel};document.getElementById('b_prestigeEmoji').value='${BO7_CATALOG.prestige.emoji}'"><i class="fa-solid fa-medal"></i> Load BO7 Defaults (Prestige 1-10)</button></div>
+          <div class="form-field"><label>Prestige Emoji</label><input id="b_prestigeEmoji" value="${escapeAttr(v('prestigeEmoji',BO7_CATALOG.prestige.emoji))}" placeholder="🎖️" maxlength="40">
+            <p class="text-xs text-muted mt-2">Shown next to each prestige level. Use a custom emoji like <code>&lt;:prestige:123&gt;</code></p></div>
+          <div class="form-field"><label>Price per Prestige Level ($)</label><input id="b_pricePerPrestige" type="number" step="0.01" value="${v('pricePerPrestige',BO7_CATALOG.prestige.pricePerLevel)}">
+            <p class="text-xs text-muted mt-2">Customer picks target level. Price = level × this.<br>e.g. Prestige 5 = 5 × $10 = $50</p></div>
+        </div>
+      </div>
+
+      <div id="b_gunFields" class="hidden">
+        <div class="form-row">
+          <div class="form-field"><label>Available Guns (use # Category headers to group, then emoji GunName:price per line)</label>
+            <div class="flex gap-2 mb-2" style="flex-wrap:wrap">
+              <button type="button" class="btn btn-sm" onclick="loadBo7GunsToBoosting('all')"><i class="fa-solid fa-gun"></i> All BO7 Guns ($13)</button>
+              ${BO7_CATALOG.gunsByCategory.map(cat=>`<button type="button" class="btn btn-sm" onclick="loadBo7GunsToBoosting('${escapeAttr(cat.category)}')">${cat.emoji} ${escapeHtml(cat.category)}</button>`).join('')}
+            </div>
+            <textarea id="b_gunList" style="min-height:180px;font-family:'JetBrains Mono',monospace" placeholder="# Assault Rifles&#10;🔫 AK-27:13&#10;🔫 M15 MOD 0:13&#10;# SMGs&#10;💨 Dravec 45:13&#10;💨 Kogot-7:13">${escapeHtml(gunListText)}</textarea>
+            <p class="text-xs text-muted mt-2"><b>Format:</b> Lines starting with <code>#</code> are category names. Other lines are guns: <code>emoji GunName:price</code><br>
+            <b>Customer flow:</b> picks category → picks gun → enters levels → price = levels × price<br>
+            e.g. AK-27 1→100 = 99 × $13 = <b>$13</b> · Default price = $13/gun</p></div>
+          <div class="form-field"><label>Max Gun Level</label><input id="b_maxGunLevel" type="number" value="${v('maxGunLevel',100)}" placeholder="100">
+            <p class="text-xs text-muted mt-2">Max level a gun can reach (BO7 = 100).<br>Customer enters current level (1) → target level (100).</p>
+            <div class="mt-3" style="background:var(--bg-input);padding:10px;border-radius:8px;border:1px solid var(--border)">
+              <p class="text-xs text-muted" style="margin-bottom:4px"><b>💡 Pricing example:</b></p>
+              <p class="text-xs mono" style="color:var(--green)">AK-27: 1 → 100<br>= 99 levels × $13<br>= <b>$13</b></p>
+            </div></div>
+        </div>
+      </div>
+
+      <div class="form-row"><div class="form-field"><label>ETA</label><input id="b_eta" value="${escapeAttr(v('eta','24-48 hours'))}" placeholder="24-48 hours"></div>
+      <div class="form-field"><label>${isEdit?'New Cover Image (optional)':'Cover Image (optional)'}</label><input type="file" id="b_image" accept="image/*"></div></div>
+      <div class="form-row"><div class="form-field"><label>Description (EN)</label><textarea id="b_descEn" placeholder="Professional booster, account safety guaranteed.">${escapeHtml(v('descriptionEn',''))}</textarea></div>
+      <div class="form-field"><label>Description (AR)</label><textarea id="b_descAr" placeholder="بوستر محترف، ضمان أمان الحساب.">${escapeHtml(v('descriptionAr',''))}</textarea></div></div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveBoosting(${editId||0})"><i class="fa-solid fa-rocket"></i> ${isEdit?'Update':'Create'}</button></div>
+  `);
+  toggleBoostFields();
+}
+function toggleBoostFields() {
+  const t = val('b_serviceType');
+  document.getElementById('b_rankFields').classList.toggle('hidden', t !== 'rank');
+  document.getElementById('b_prestigeFields').classList.toggle('hidden', t !== 'prestige');
+  document.getElementById('b_gunFields').classList.toggle('hidden', t !== 'gun_level');
+}
+async function saveBoosting(editId) {
+  const file = document.getElementById('b_image').files[0];
+  let newImage = null;
+  if (file) { newImage = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
+  // Use existing images + new image (replace if any)
+  let images = window._boostImages || [];
+  if (newImage) { images = [newImage, ...images.slice(0, 9)]; }
+  const serviceType = val('b_serviceType');
+  const data = {
+    titleEn: val('b_titleEn'), titleAr: val('b_titleAr'),
+    game: val('b_game'), serviceType,
+    price: parseFloat(val('b_price')) || 0,
+    eta: val('b_eta') || '24-48 hours',
+    descriptionEn: val('b_descEn'), descriptionAr: val('b_descAr'),
+    images
+  };
+  if (serviceType === 'rank') {
+    data.rankList = document.getElementById('b_rankList').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    data.rankTiers = parseInt(val('b_rankTiers')) || 3;
+    data.pricePerRank = parseFloat(val('b_pricePerRank')) || 0;
+    if (data.rankList.length < 2) return toast('error', 'Add at least 2 ranks');
+    if (data.pricePerRank <= 0) return toast('error', 'Set price per tier');
+  } else if (serviceType === 'prestige') {
+    data.maxPrestige = parseInt(val('b_maxPrestige')) || 0;
+    data.pricePerPrestige = parseFloat(val('b_pricePerPrestige')) || 0;
+    data.prestigeEmoji = val('b_prestigeEmoji') || '🎖️';
+    if (data.maxPrestige < 1) return toast('error', 'Set max prestige level');
+    if (data.pricePerPrestige <= 0) return toast('error', 'Set price per prestige level');
+  } else if (serviceType === 'gun_level') {
+    data.gunList = document.getElementById('b_gunList').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    data.maxGunLevel = parseInt(val('b_maxGunLevel')) || 100;
+    if (data.gunList.length < 1) return toast('error', 'Add at least 1 gun (format: emoji GunName:PricePerLevel)');
+  }
+  if (!data.titleEn || !data.price) return toast('error', 'Title and starting price required');
   try {
-    const pr = store.paymentRequests.find(p => p.id === req.params.id);
-    if (!pr) return res.status(404).json({ error: 'Not found' });
-
-    const ticket = store.tickets.find(t => t.paymentId === pr.id);
-    if (ticket && ticket.channelId && client.isReady()) {
-      const ticketChannel = client.channels.cache.get(ticket.channelId);
-      if (ticketChannel) {
-        const rejectEmbed = new EmbedBuilder()
-          .setColor(0xda373c)
-          .setTitle('❌ تم رفض الدفع / Payment Rejected')
-          .setDescription(
-            `طلب رقم: \`${pr.id}\` الخاص بـ **${pr.accountTitle}** تم رفضه.\n\n` +
-            `⚠️ يرجى التحقق من المبلغ المدفوع والمحاولة مرة أخرى.\n` +
-            `Upload a new receipt or contact support.`
-          )
-          .setFooter({ text: store.settings.storeName })
-          .setTimestamp();
-        await ticketChannel.send({ embeds: [rejectEmbed] });
-        ticket.status = 'waiting_payment';
-        pr.status = 'Pending';
-      }
+    if (editId) {
+      await api('boosting/'+editId, { method:'PUT', body: JSON.stringify(data) });
+      toast('success', 'Boosting service updated');
     } else {
-      if (pr.userId && client.isReady()) {
-        client.users.fetch(pr.userId).then(user => {
-          user.send(`❌ **${store.settings.storeName} — Payment Rejected**\n\nطلب رقم: \`${pr.id}\` الخاص بـ **${pr.accountTitle}** تم رفضه. يرجى مراجعة الدعم الفني.`).catch(() => {});
-        }).catch(() => {});
-      }
-      pr.status = 'Rejected';
+      await api('boosting', { method:'POST', body: JSON.stringify(data) });
+      toast('success', 'Boosting service created & posted to Discord');
     }
-    saveStore();
-    sendLogToDiscord(`❌ Payment rejected: \`${pr.id}\` for **${pr.accountTitle}**`);
-    addLog('WARN', `Payment rejected: ${pr.id}`);
-    res.json(pr);
-  } catch (e) {
-    console.error('Reject payment error:', e);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ===== TICKETS =====
-app.get('/api/tickets', (req, res) => {
-  try {
-    let filtered = store.tickets;
-    if (req.query.status && req.query.status !== 'All') filtered = filtered.filter(t => t.status === req.query.status);
-    res.json(filtered);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/tickets/:id/close', async (req, res) => {
-  try {
-    const ticket = store.tickets.find(t => t.id === req.params.id);
-    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
-    ticket.status = 'closed';
-    ticket.closedAt = new Date().toISOString();
-
-    if (ticket.channelId && client.isReady()) {
-      const ch = client.channels.cache.get(ticket.channelId);
-      if (ch) {
-        await ch.send('🔒 **تم إغلاق التذكرة / Ticket Closed** — سيتم حذفها خلال 5 ثوانٍ.');
-        setTimeout(async () => { try { await ch.delete('Ticket closed by admin'); } catch (e) {} }, 5000);
-      }
-    }
-
-    // Release the account if payment wasn't completed
-    const pr = store.paymentRequests.find(p => p.id === ticket.paymentId);
-    if (pr && (pr.status === 'Pending' || pr.status === 'Rejected')) {
-      const acc = store.accounts.find(a => a.id === ticket.accountId);
-      if (acc && acc.status === 'reserved') {
-        acc.status = 'available';
-        acc.soldTo = null;
-        addLog('INFO', `Account ${acc.id} released back to available (ticket ${ticket.id} closed)`);
-      }
-    }
-    saveStore();
-    addLog('INFO', `Ticket ${ticket.id} closed manually`);
-    res.json(ticket);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ===== CUSTOMERS =====
-app.get('/api/customers', (req, res) => { try { res.json(store.customers); } catch (e) { res.status(500).json({ error: e.message }); } });
-app.post('/api/customers', (req, res) => { try { const c = { id: 'u' + genId(), ...req.body, joined: req.body.joined || new Date().toISOString().slice(0,10) }; store.customers.push(c); saveStore(); res.json(c); } catch (e) { res.status(500).json({ error: e.message }); } });
-app.put('/api/customers/:id', (req, res) => { try { const c = store.customers.find(x => x.id === req.params.id); if (!c) return res.status(404).json({ error: 'Not found' }); Object.assign(c, req.body); saveStore(); res.json(c); } catch (e) { res.status(500).json({ error: e.message }); } });
-app.post('/api/customers/:id/blacklist', (req, res) => { try { const c = store.customers.find(x => x.id === req.params.id); if (c) c.trust = 'Blacklisted'; saveStore(); res.json(c); } catch (e) { res.status(500).json({ error: e.message }); } });
-app.post('/api/customers/:id/unblacklist', (req, res) => { try { const c = store.customers.find(x => x.id === req.params.id); if (c) c.trust = 'Verified'; saveStore(); res.json(c); } catch (e) { res.status(500).json({ error: e.message }); } });
-
-// ===== POOLS (Auto-Delivery) =====
-app.get('/api/pools', (req, res) => { try { res.json(store.pools); } catch (e) { res.status(500).json({ error: e.message }); } });
-
-app.post('/api/pools', async (req, res) => {
-  try {
-    const { name, description, price, game, image } = req.body;
-    if (!name || !price) return res.status(400).json({ error: 'Name and price required' });
-    const pool = {
-      id: genId(), name, description: description || '', price: parseFloat(price),
-      game: game || 'Other', image: image || null, stock: [],
-      createdAt: new Date().toISOString(), discordMessageIds: []
-    };
-    store.pools.push(pool);
-    saveStore();
-
-    // Post to Discord
-    const channelId = store.settings.accountsChannelId;
-    if (channelId && client.isReady()) {
-      const channel = client.channels.cache.get(channelId);
-      if (channel) await postPoolToDiscord(channel, pool).catch(e => addLog('ERROR', 'Pool post failed: ' + e.message));
-    }
-
-    addLog('INFO', `Pool created: ${name}`);
-    res.json(pool);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-async function postPoolToDiscord(channel, pool) {
-  const brandColor = store.settings.color || 0x9b59ff;
-  const embed = new EmbedBuilder()
-    .setColor(brandColor)
-    .setTitle('⚡ ' + pool.name + ' — Auto-Delivery')
-    .setDescription(pool.description || 'Instant auto-delivery after payment!')
-    .addFields(
-      { name: '🎮 Game', value: pool.game, inline: true },
-      { name: '💰 Price', value: store.settings.currency + pool.price.toFixed(2), inline: true },
-      { name: '📦 In Stock', value: '```fix\n' + (pool.stock ? pool.stock.length : 0) + '```', inline: true }
-    )
-    .setFooter({ text: store.settings.storeName + ' • Pool ID: ' + pool.id + ' • Auto-delivery' })
-    .setTimestamp();
-
-  const files = [];
-  if (pool.image) {
-    const parsed = base64ToBuffer(pool.image);
-    if (parsed) {
-      const fileName = 'pool_' + pool.id + '.jpg';
-      files.push(new AttachmentBuilder(parsed.buffer, { name: fileName }));
-      embed.setImage('attachment://' + fileName);
-    }
-  }
-
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('buypool_' + pool.id).setLabel('شراء فوري / Instant Buy').setStyle(ButtonStyle.Success).setEmoji('⚡')
-  );
-
-  const msg = await channel.send({ embeds: [embed], components: [row], files });
-  pool.discordMessageIds.push(msg.id);
-  saveStore();
+    closeModal(); refreshAll(true);
+  } catch (e) { toast('error', e.message); }
+}
+async function deleteBoosting(id) {
+  if (!confirm('Delete this boosting service?')) return;
+  try { await api('boosting/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+async function completeBoosting(id) {
+  if (!confirm('Mark this boost complete? Will deliver completion message and close the ticket.')) return;
+  try { await api(`boosting/${id}/complete`, { method:'POST' }); toast('success', 'Boost marked complete — ticket closing'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+async function completeCamo(id) {
+  if (!confirm('Mark this camo unlock complete? Will deliver completion message and close the ticket.')) return;
+  try { await api(`camo/${id}/complete`, { method:'POST' }); toast('success', 'Camo marked complete — ticket closing'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
 }
 
-app.post('/api/pools/:id/stock', (req, res) => {
-  try {
-    const pool = store.pools.find(p => p.id === parseInt(req.params.id));
-    if (!pool) return res.status(404).json({ error: 'Pool not found' });
-    const { credentials } = req.body;
-    if (!credentials || !credentials.length) return res.status(400).json({ error: 'No credentials' });
-    let count = 0;
-    credentials.forEach(line => {
-      let email = '', pass = line;
-      const sep = line.match(/[:|]/);
-      if (sep) { const idx = line.indexOf(sep[0]); email = line.slice(0, idx).trim(); pass = line.slice(idx + 1).trim(); }
-      pool.stock.push({ email, pass, addedAt: new Date().toISOString() });
-      count++;
+// ===== CAMO UNLOCK =====
+function renderCamo(c) {
+  const services = CACHE.camo || [];
+  const cur = CACHE.settings.currency || '$';
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header">
+        <div><h2>Camo Unlock</h2><p>${services.length} services • CoD/Warzone weapon camo unlock — you add the camo names</p></div>
+        <button class="btn btn-primary" onclick="openCamoModal()"><i class="fa-solid fa-plus"></i> New Camo Service</button>
+      </div>
+      ${services.length === 0 ? '<div class="empty"><i class="fa-solid fa-palette"></i><p>No camo services yet. Add Gold, Platinum, Polyatomic, Orion, etc.</p><button class="btn btn-primary" onclick="openCamoModal()"><i class="fa-solid fa-plus"></i> Create Camo Service</button></div>' :
+        `<div class="account-grid">${services.map(s => {
+          const camosCount = s.camoList ? s.camoList.length : 0;
+          const gunsCount = s.gunList ? s.gunList.length : 0;
+          const camosPreview = s.camoList && s.camoList.length > 0 ? s.camoList.slice(0, 4).map(c => (c.emoji||'') + ' ' + escapeHtml(c.name)).join(', ') + (camosCount > 4 ? ' +' + (camosCount - 4) : '') : 'No camos';
+          return `
+          <div class="account-card">
+            <div class="thumb">
+              ${s.images&&s.images[0] ? `<img src="${s.images[0]}">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--accent);font-size:32px"><i class="fa-solid fa-palette"></i></div>`}
+              <div class="game-tag">${escapeHtml(s.game)}</div>
+              <div style="position:absolute;top:8px;right:8px"><span class="badge available">${camosCount} camos</span></div>
+            </div>
+            <div class="body">
+              <h4>${escapeHtml(s.titleEn)}</h4>
+              <div class="sub">${escapeHtml(s.titleAr||'')}</div>
+              <div class="price">${cur}${s.pricePerCamo.toFixed(2)} <span class="text-xs text-muted" style="font-weight:400">per camo</span></div>
+              <div class="meta">
+                <span><i class="fa-solid fa-palette"></i> ${camosPreview}</span>
+                ${gunsCount > 0 ? `<span><i class="fa-solid fa-gun"></i> ${gunsCount} guns</span>` : ''}
+                <span><i class="fa-solid fa-clock"></i> ${escapeHtml(s.eta||'')}</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn btn-sm" onclick="viewCamo(${s.id})" title="View"><i class="fa-solid fa-eye"></i></button>
+              <button class="btn btn-sm" onclick="editCamo(${s.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
+              <button class="btn btn-sm" onclick="repostCamo(${s.id})" title="Re-post to Discord"><i class="fa-solid fa-rotate"></i></button>
+              <button class="btn btn-sm btn-danger" onclick="deleteCamo(${s.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          </div>`;
+        }).join('')}</div>`}
+    </div>`;
+}
+function openCamoModal(editId) {
+  const edit = editId ? CACHE.camo.find(s => s.id === editId) : null;
+  window._camoImages = edit && edit.images ? [...edit.images] : [];
+  const isEdit = !!edit;
+  const v = (k, d='') => edit ? (edit[k] !== undefined && edit[k] !== null ? edit[k] : d) : d;
+  // Build 4 camo slots from existing camoList or empty
+  const existingCamos = edit && edit.camoList ? edit.camoList : [];
+  const slots = [];
+  for (let i = 0; i < 4; i++) {
+    const c = existingCamos[i] || {};
+    slots.push({
+      name: c.name || '',
+      price: (c.price !== null && c.price !== undefined && c.price !== '') ? c.price : '',
+      emoji: c.emoji || ''
     });
-    saveStore();
-    addLog('INFO', `Added ${count} items to pool ${pool.name}`);
-    res.json({ added: count, total: pool.stock.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/pools/:id', (req, res) => {
-  try {
-    store.pools = store.pools.filter(p => p.id !== parseInt(req.params.id));
-    saveStore();
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ===== DIGITAL PRODUCTS (PSN cards, Xbox subs, Netflix, CD keys — instant code delivery) =====
-app.get('/api/digital', (req, res) => { try { res.json(store.digitalProducts); } catch (e) { res.status(500).json({ error: e.message }); } });
-
-app.post('/api/digital', async (req, res) => {
-  try {
-    const { titleEn, titleAr, platform, productType, price, descriptionEn, descriptionAr, image, stock } = req.body;
-    if (!titleEn || !price) return res.status(400).json({ error: 'Title and price required' });
-    const product = {
-      id: genId(), titleEn, titleAr: titleAr || '',
-      platform: platform || 'Other',     // PSN / Xbox / Netflix / Steam / CD Key / etc
-      productType: productType || 'code', // code / subscription / gift_card / cd_key
-      price: parseFloat(price),
-      descriptionEn: descriptionEn || '', descriptionAr: descriptionAr || '',
-      image: image || null,              // single cover image (base64)
-      stock: Array.isArray(stock) ? stock : [],  // [{ code, notes, addedAt }]
-      createdAt: new Date().toISOString(), discordMessageIds: []
-    };
-    store.digitalProducts.push(product);
-    saveStore();
-    const channelId = store.settings.digitalChannelId || store.settings.accountsChannelId;
-    if (channelId && client.isReady()) {
-      const channel = client.channels.cache.get(channelId);
-      if (channel) await postDigitalToDiscord(channel, product).catch(e => addLog('ERROR', 'Digital post failed: ' + e.message));
-    }
-    addLog('INFO', `Digital product created: ${titleEn} (stock: ${product.stock.length})`);
-    res.json(product);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-async function postDigitalToDiscord(channel, product) {
-  const brandColor = store.settings.color || 0x9b59ff;
-  const cur = store.settings.currency;
-  const stockCount = product.stock ? product.stock.length : 0;
-  const embed = new EmbedBuilder()
-    .setColor(brandColor)
-    .setTitle('🎫 ' + product.titleEn)
-    .setDescription(
-      (product.titleAr ? '**' + product.titleAr + '**\n' : '') +
-      '```yaml\n' + product.platform + ' • ' + product.productType + '```\n' +
-      (product.descriptionEn ? '📋 ' + product.descriptionEn + '\n' : '') +
-      (product.descriptionAr ? '📋 ' + product.descriptionAr + '\n' : '')
-    )
-    .addFields(
-      { name: '💳 Platform', value: product.platform, inline: true },
-      { name: '📦 Type', value: product.productType, inline: true },
-      { name: '📊 In Stock', value: '```fix\n' + stockCount + '```', inline: true },
-      { name: '💰 Price', value: '```fix\n' + cur + product.price.toFixed(2) + '```', inline: false }
-    )
-    .setFooter({ text: store.settings.storeName + ' • Digital Product • ID: ' + product.id + ' • Instant delivery' })
-    .setTimestamp();
-  const files = [];
-  if (product.image) {
-    const parsed = base64ToBuffer(product.image);
-    if (parsed) {
-      const fileName = 'digital_' + product.id + '.jpg';
-      files.push(new AttachmentBuilder(parsed.buffer, { name: fileName }));
-      embed.setImage('attachment://' + fileName);
+  }
+  const gunListText = edit && edit.gunList && edit.gunList.length
+    ? (edit.gunCategories && edit.gunCategories.length
+        ? edit.gunCategories.map(cat => {
+            const header = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.name;
+            const guns = cat.guns.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name);
+            return header + '\n' + guns.join('\n');
+          }).join('\n')
+        : edit.gunList.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name).join('\n'))
+    : '';
+  // Build 4 slot fields HTML
+  const slotsHtml = slots.map((s, i) => `
+    <div class="form-row">
+      <div class="form-field"><label>Camo ${i+1} Name</label><input id="cm_camo${i}_name" value="${escapeAttr(s.name)}" placeholder="e.g. Molten Gold"></div>
+      <div class="form-field"><label>Camo ${i+1} Price ($)</label><input id="cm_camo${i}_price" type="number" step="0.01" value="${s.price}" placeholder="e.g. 12"></div>
+    </div>`).join('');
+  showModal(`
+    <div class="modal-header"><h3>${isEdit?'Edit':'New'} Camo Unlock Service</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-row"><div class="form-field"><label>Title (English) *</label><input id="cm_titleEn" value="${escapeAttr(v('titleEn','Warzone Camo Unlock'))}" placeholder="Warzone Camo Unlock"></div>
+      <div class="form-field"><label>Title (Arabic)</label><input id="cm_titleAr" value="${escapeAttr(v('titleAr',''))}" placeholder="فتح كاموهات وورزون"></div></div>
+      <div class="form-row-3">
+        <div class="form-field"><label>Game *</label><select id="cm_game">
+          ${['Call of Duty Black Ops 7','Call of Duty Warzone','Call of Duty','Call of Duty Mobile','Valorant','Fortnite','Apex Legends','Other'].map(g=>`<option ${v('game','Call of Duty Black Ops 7')===g?'selected':''}>${g}</option>`).join('')}
+        </select></div>
+        <div class="form-field"><label>Default Price per Camo ($)</label><input id="cm_pricePerCamo" type="number" step="0.01" value="${v('pricePerCamo',5)}" placeholder="5.00">
+          <p class="text-xs text-muted">Used as fallback if slot price is empty</p></div>
+        <div class="form-field"><label>ETA</label><input id="cm_eta" value="${escapeAttr(v('eta','24-72 hours'))}" placeholder="24-72 hours"></div>
+      </div>
+      <div class="panel-card" style="background:var(--bg-elev);border:1px solid var(--border)">
+        <h3 style="margin-bottom:12px"><i class="fa-solid fa-palette"></i> Camo Slots (fill what you want)</h3>
+        ${slotsHtml}
+        <p class="text-xs text-muted mt-2">Leave any slot empty if you don't need it. Customer picks from filled slots.</p>
+      </div>
+      <div class="form-row">
+        <div class="form-field"><label>Gun Names (optional, emoji + name, one per line)</label>
+          <div class="flex gap-2 mb-2" style="flex-wrap:wrap">
+            <button type="button" class="btn btn-sm" onclick="document.getElementById('cm_gunList').value=allBo7GunsAsText()"><i class="fa-solid fa-gun"></i> All BO7 Guns</button>
+            ${BO7_CATALOG.gunsByCategory.map(cat=>`<button type="button" class="btn btn-sm" onclick="document.getElementById('cm_gunList').value=bo7GunsByCategoryAsText('${escapeAttr(cat.category)}')">${cat.emoji} ${escapeHtml(cat.category)}</button>`).join('')}
+            <button type="button" class="btn btn-sm" onclick="document.getElementById('cm_gunList').value=''"><i class="fa-solid fa-eraser"></i> Clear</button>
+          </div>
+          <textarea id="cm_gunList" style="min-height:120px;font-family:'JetBrains Mono',monospace" placeholder="🔫 AK-27&#10;💨 Dravec 45 (leave empty = any gun)">${escapeHtml(gunListText)}</textarea>
+          <p class="text-xs text-muted mt-2">If you add guns, customer picks a gun first, then picks camos.<br>Leave empty to skip gun selection.</p></div>
+      </div>
+      <div class="form-row"><div class="form-field"><label>${isEdit?'New Cover Image (optional)':'Cover Image (optional)'}</label><input type="file" id="cm_image" accept="image/*"></div></div>
+      <div class="form-row"><div class="form-field"><label>Description (EN)</label><textarea id="cm_descEn" placeholder="Unlock all camos fast and safe.">${escapeHtml(v('descriptionEn',''))}</textarea></div>
+      <div class="form-field"><label>Description (AR)</label><textarea id="cm_descAr" placeholder="افتح جميع الكاموهات بسرعة وأمان.">${escapeHtml(v('descriptionAr',''))}</textarea></div></div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCamo(${editId||0})"><i class="fa-solid fa-palette"></i> ${isEdit?'Update':'Create'}</button></div>
+  `);
+}
+async function saveCamo(editId) {
+  const file = document.getElementById('cm_image').files[0];
+  let newImage = null;
+  if (file) { newImage = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
+  let images = window._camoImages || [];
+  if (newImage) { images = [newImage, ...images.slice(0, 9)]; }
+  // Build camoList from 4 slots
+  const camoList = [];
+  for (let i = 0; i < 4; i++) {
+    const name = val('cm_camo'+i+'_name');
+    const price = val('cm_camo'+i+'_price');
+    if (name) {
+      camoList.push({
+        name: name,
+        emoji: '',
+        price: price ? parseFloat(price) : null
+      });
     }
   }
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('buydig_' + product.id).setLabel('شراء فوري / Buy Instant').setStyle(ButtonStyle.Success).setEmoji('🎫')
-  );
-  const msg = await channel.send({ embeds: [embed], components: [row], files });
-  product.discordMessageIds.push(msg.id);
-  saveStore();
-}
-
-app.put('/api/digital/:id', (req, res) => {
+  const data = {
+    titleEn: val('cm_titleEn'), titleAr: val('cm_titleAr'),
+    game: val('cm_game'),
+    pricePerCamo: parseFloat(val('cm_pricePerCamo')) || 0,
+    eta: val('cm_eta') || '24-72 hours',
+    camoList: camoList,
+    gunList: document.getElementById('cm_gunList').value.split('\n').map(s=>s.trim()).filter(Boolean),
+    descriptionEn: val('cm_descEn'), descriptionAr: val('cm_descAr'),
+    images
+  };
+  if (!data.titleEn) return toast('error', 'Title required');
+  if (camoList.length === 0) return toast('error', 'Fill at least 1 camo slot');
   try {
-    const p = store.digitalProducts.find(d => d.id === parseInt(req.params.id));
-    if (!p) return res.status(404).json({ error: 'Not found' });
-    Object.assign(p, req.body, { id: p.id });
-    saveStore(); res.json(p);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/digital/:id', (req, res) => {
-  try {
-    store.digitalProducts = store.digitalProducts.filter(d => d.id !== parseInt(req.params.id));
-    saveStore(); res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/digital/:id/stock', (req, res) => {
-  try {
-    const p = store.digitalProducts.find(d => d.id === parseInt(req.params.id));
-    if (!p) return res.status(404).json({ error: 'Not found' });
-    const { codes } = req.body;
-    if (!codes || !codes.length) return res.status(400).json({ error: 'No codes provided' });
-    let count = 0;
-    codes.forEach(line => {
-      const trimmed = line.trim(); if (!trimmed) return;
-      // Format: code | optional notes  OR  just code
-      let code = trimmed, notes = '';
-      if (trimmed.includes('|')) { const parts = trimmed.split('|'); code = parts[0].trim(); notes = parts.slice(1).join('|').trim(); }
-      p.stock.push({ code, notes, addedAt: new Date().toISOString() });
-      count++;
-    });
-    saveStore();
-    addLog('INFO', `Added ${count} codes to digital product ${p.titleEn}`);
-    res.json({ added: count, total: p.stock.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ===== BOOSTING SERVICES (CoD/Warzone rank, prestige, gun level boosting) =====
-app.get('/api/boosting', (req, res) => { try { res.json(store.boostingServices); } catch (e) { res.status(500).json({ error: e.message }); } });
-
-app.post('/api/boosting', async (req, res) => {
-  try {
-    const { titleEn, titleAr, game, serviceType, fromRank, toRank, prestigeLevel, gunName, fromLevel, toLevel,
-      price, eta, descriptionEn, descriptionAr, images,
-      rankList, rankTiers, pricePerRank, maxPrestige, pricePerPrestige, prestigeEmoji, gunList, maxGunLevel } = req.body;
-    if (!titleEn || !price) return res.status(400).json({ error: 'Title and price required' });
-    const service = {
-      id: genId(), titleEn, titleAr: titleAr || '',
-      game: game || 'Call of Duty',
-      serviceType: serviceType || 'rank',
-      // Legacy fixed fields (kept for backward compat, used if no options defined)
-      fromRank: fromRank || '', toRank: toRank || '',
-      prestigeLevel: prestigeLevel || '',
-      gunName: gunName || '', fromLevel: fromLevel || '', toLevel: toLevel || '',
-      price: parseFloat(price),
-      eta: eta || '24-48 hours',
-      descriptionEn: descriptionEn || '', descriptionAr: descriptionAr || '',
-      images: Array.isArray(images) ? images : [],
-      // ===== Customer-choice config (with emoji support) =====
-      // rankList: array of { name, emoji } — e.g. [{name:'Bronze', emoji:'🥉'}, ...]
-      // Supports custom emoji tags like '<:bronze:123456>' too
-      rankList: Array.isArray(rankList) ? rankList.map(parseRankEntry) : (rankList ? String(rankList).split('\n').map(s=>s.trim()).filter(Boolean).map(parseRankEntry) : []),
-      rankTiers: parseInt(rankTiers) || 3,  // tiers per rank (I, II, III = 3). Last rank in list is always single-tier (Top 250)
-      pricePerRank: parseFloat(pricePerRank) || 0,
-      maxPrestige: parseInt(maxPrestige) || 0,
-      pricePerPrestige: parseFloat(pricePerPrestige) || 0,
-      prestigeEmoji: prestigeEmoji || '🎖️',
-      gunList: parseGunListInput(gunList).gunList,
-      gunCategories: parseGunListInput(gunList).gunCategories,
-      maxGunLevel: parseInt(maxGunLevel) || 100,
-      status: 'active',
-      createdAt: new Date().toISOString(), discordMessageIds: []
-    };
-    store.boostingServices.push(service);
-    saveStore();
-    const channelId = store.settings.boostingChannelId || store.settings.accountsChannelId;
-    if (channelId && client.isReady()) {
-      const channel = client.channels.cache.get(channelId);
-      if (channel) await postBoostingToDiscord(channel, service).catch(e => addLog('ERROR', 'Boosting post failed: ' + e.message));
-    }
-    addLog('INFO', `Boosting service created: ${titleEn}`);
-    res.json(service);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Parse rank entry: '🥉 Bronze' or 'Bronze' or '<:bronze:123> Bronze'
-function parseRankEntry(line) {
-  if (typeof line === 'object') return line; // already parsed
-  const trimmed = String(line).trim();
-  // Try to extract leading emoji (unicode or custom <:name:id>)
-  const customMatch = trimmed.match(/^<:(\w+):(\d+)>\s*(.+)$/);
-  if (customMatch) return { emoji: { id: customMatch[2], name: customMatch[1] }, name: customMatch[3].trim() };
-  // Unicode emoji at start (1-2 chars)
-  const unicodeMatch = trimmed.match(/^(\p{Extended_Pictographic}|\p{Emoji})(\uFE0F)?(?:\u200D(?:\p{Extended_Pictographic}|\p{Emoji}))*\s*(.+)$/u);
-  if (unicodeMatch) {
-    const emojiPart = trimmed.slice(0, trimmed.length - unicodeMatch[3].length).trim();
-    return { emoji: emojiPart, name: unicodeMatch[3].trim() };
-  }
-  return { emoji: '', name: trimmed };
-}
-
-// Parse gun entry: '🔫 M4A1:0.50' or 'M4A1:0.50' or '<:m4:123> M4A1:0.50'
-function parseGunEntry(line) {
-  if (typeof line === 'object') return line;
-  const trimmed = String(line).trim();
-  let emoji = '';
-  let rest = trimmed;
-  // Custom emoji
-  const customMatch = trimmed.match(/^<:(\w+):(\d+)>\s*(.+)$/);
-  if (customMatch) { emoji = { id: customMatch[2], name: customMatch[1] }; rest = customMatch[3]; }
-  else {
-    const unicodeMatch = trimmed.match(/^(\p{Extended_Pictographic}|\p{Emoji})(\uFE0F)?(?:\u200D(?:\p{Extended_Pictographic}|\p{Emoji}))*\s*(.+)$/u);
-    if (unicodeMatch) { emoji = trimmed.slice(0, trimmed.length - unicodeMatch[3].length).trim(); rest = unicodeMatch[3]; }
-  }
-  // rest = 'GunName:pricePerLevel'
-  const parts = rest.split(':');
-  const name = parts[0].trim();
-  const pricePerLevel = parseFloat(parts[1]) || 0;
-  return { name, emoji, pricePerLevel };
-}
-
-// Parse gun list input — supports 2 formats:
-// Format 1 (flat): ['🔫 M4A1:0.50', '🔫 AK-47:0.50']  → gunList = [{name, emoji, pricePerLevel}, ...]
-// Format 2 (categorized): ['# Assault Rifles', '🔫 M4A1:0.50', '🔫 AK-47', '# SMGs', '💨 MP5:0.40']
-//   → gunCategories = [{name:'Assault Rifles', emoji:'🔫', guns:[{name,emoji,pricePerLevel},...]}, ...]
-// Lines starting with '#' or '##' are category headers (optional emoji after #)
-// Returns { gunList: [...flat guns...], gunCategories: [...categories...] or [] }
-function parseGunListInput(input) {
-  if (typeof input === 'string') input = input.split('\n');
-  if (!Array.isArray(input)) return { gunList: [], gunCategories: [] };
-  const gunList = []; // flat list
-  const gunCategories = []; // categorized
-  let currentCat = null;
-  for (let line of input) {
-    if (typeof line === 'object') { gunList.push(line); continue; }
-    line = String(line).trim();
-    if (!line) continue;
-    // Category header: '# Assault Rifles' or '## 🔫 Assault Rifles'
-    if (line.startsWith('#')) {
-      const headerText = line.replace(/^#+\s*/, '');
-      let catEmoji = '';
-      let catName = headerText;
-      const customMatch = headerText.match(/^<:(\w+):(\d+)>\s*(.+)$/);
-      if (customMatch) { catEmoji = { id: customMatch[2], name: customMatch[1] }; catName = customMatch[3].trim(); }
-      else {
-        const unicodeMatch = headerText.match(/^(\p{Extended_Pictographic}|\p{Emoji})(\uFE0F)?(?:\u200D(?:\p{Extended_Pictographic}|\p{Emoji}))*\s*(.+)$/u);
-        if (unicodeMatch) { catEmoji = headerText.slice(0, headerText.length - unicodeMatch[3].length).trim(); catName = unicodeMatch[3].trim(); }
-      }
-      currentCat = { name: catName, emoji: catEmoji, guns: [] };
-      gunCategories.push(currentCat);
-      continue;
-    }
-    // Regular gun line
-    const gun = parseGunEntry(line);
-    gunList.push(gun);
-    if (currentCat) currentCat.guns.push(gun);
-    else {
-      const otherCat = gunCategories.find(c => c.name === 'Other');
-      if (otherCat) otherCat.guns.push(gun);
-      else gunCategories.push({ name: 'Other', emoji: '🔫', guns: [gun] });
-    }
-  }
-  return { gunList, gunCategories };
-}
-
-// Get gun categories from a boosting/camo service
-function getGunCategories(service) {
-  if (service.gunCategories && service.gunCategories.length > 0) return service.gunCategories;
-  if (service.gunList && service.gunList.length > 0) {
-    return [{ name: 'All Guns', emoji: '🔫', guns: service.gunList }];
-  }
-  return [];
-}
-
-
-// Expand rankList into flat list of tiers with emojis
-// e.g. rankList=[Bronze,Silver,Gold], rankTiers=3 → [Bronze I, Bronze II, Bronze III, Silver I, Silver II, Silver III, Gold I, Gold II, Gold III]
-// Last rank is always single-tier (Top 250 style)
-function getExpandedRanks(service) {
-  if (!service.rankList || service.rankList.length === 0) return [];
-  const tiers = service.rankTiers || 3;
-  const tierLabels = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
-  const out = [];
-  for (let r = 0; r < service.rankList.length; r++) {
-    const rank = service.rankList[r];
-    const isLast = r === service.rankList.length - 1;
-    if (isLast) {
-      // Last rank (e.g. Top 250) is single tier
-      out.push({ label: rank.name, emoji: rank.emoji, rankIdx: r, tierIdx: 0, globalIdx: out.length });
+    if (editId) {
+      await api('camo/'+editId, { method:'PUT', body: JSON.stringify(data) });
+      toast('success', 'Camo service updated');
     } else {
-      for (let t = 0; t < tiers; t++) {
-        out.push({ label: rank.name + ' ' + tierLabels[t], emoji: rank.emoji, rankIdx: r, tierIdx: t, globalIdx: out.length });
-      }
+      await api('camo', { method:'POST', body: JSON.stringify(data) });
+      toast('success', 'Camo service created & posted to Discord');
     }
-  }
-  return out;
+    closeModal(); refreshAll(true);
+  } catch (e) { toast('error', e.message); }
 }
-
-async function postBoostingToDiscord(channel, service) {
-  const brandColor = store.settings.color || 0x9b59ff;
-  const cur = store.settings.currency;
-  const allImages = service.images || [];
-  const mainEmbed = new EmbedBuilder()
-    .setColor(brandColor)
-    .setTitle('🚀 ' + service.titleEn)
-    .setDescription(
-      (service.titleAr ? '**' + service.titleAr + '**\n' : '') +
-      '```yaml\n' + service.game + ' • ' + service.serviceType.replace('_',' ') + '```\n' +
-      (service.descriptionEn ? '📋 ' + service.descriptionEn + '\n' : '') +
-      (service.descriptionAr ? '📋 ' + service.descriptionAr + '\n' : '')
-    )
-    .addFields(
-      { name: '🎮 Game', value: service.game, inline: true },
-      { name: '⏱️ ETA', value: service.eta, inline: true }
-    );
-  let startingPrice = service.price;
-  // Clean embed — don't list all ranks/guns, just show starting price + hint to click Order
-  if (service.serviceType === 'rank' && service.rankList && service.rankList.length >= 2 && service.pricePerRank > 0) {
-    startingPrice = service.pricePerRank;
-    mainEmbed.addFields({ name: '📈 الخدمة', value: 'بوست رتبة — اختر رتبتك الحالية والمستهدفة', inline: false });
-  } else if (service.serviceType === 'rank' && service.fromRank && service.toRank) {
-    mainEmbed.addFields({ name: '📈 Rank Boost', value: '`' + (service.fromRank||'-') + '` → `' + (service.toRank||'-') + '`', inline: false });
-  }
-  if (service.serviceType === 'prestige' && service.maxPrestige > 0 && service.pricePerPrestige > 0) {
-    startingPrice = service.pricePerPrestige;
-    mainEmbed.addFields({ name: '🎖️ الخدمة', value: 'بوست بريستيج — اختر المستوى المستهدف (1-' + service.maxPrestige + ')', inline: false });
-  } else if (service.serviceType === 'prestige' && service.prestigeLevel) {
-    mainEmbed.addFields({ name: '🎖️ Prestige Level', value: '```fix\n' + service.prestigeLevel + '```', inline: false });
-  }
-  if (service.serviceType === 'gun_level' && service.gunList && service.gunList.length > 0) {
-    const cheapest = Math.min(...service.gunList.map(g => g.pricePerLevel || 0));
-    if (cheapest > 0) startingPrice = cheapest;
-    const categories = getGunCategories(service);
-    if (categories.length > 1) {
-      mainEmbed.addFields({ name: '🔫 الخدمة', value: 'بوست مستويات أسلحة — اختر الفئة ثم السلاح (' + categories.length + ' فئات، ' + service.gunList.length + ' سلاح)', inline: false });
-    } else {
-      mainEmbed.addFields({ name: '🔫 الخدمة', value: 'بوست مستويات أسلحة — ' + service.gunList.length + ' سلاح متاح', inline: false });
-    }
-  } else if (service.serviceType === 'gun_level' && service.gunName) {
-    mainEmbed.addFields({ name: '🔫 Gun', value: service.gunName, inline: true });
-  }
-  mainEmbed.addFields({ name: '💰 يبدأ من', value: '```fix\n' + cur + startingPrice.toFixed(2) + '```', inline: false });
-  mainEmbed.setFooter({ text: store.settings.storeName + ' • اضغط اطلب الآن للتخصيص' });
-  mainEmbed.setTimestamp();
-
-  const files = [];
-  const embeds = [mainEmbed];
-  let imgCount = 0;
-  
-  // Auto-attach default professional image if no custom images
-  if (allImages.length === 0) {
-    const defaultImageMap = { 'rank': 'rank-boost.png', 'prestige': 'prestige.png', 'gun_level': 'gun-level.png' };
-    const defaultImg = defaultImageMap[service.serviceType];
-    if (defaultImg) {
-      const imgPath = path.join(__dirname, 'images', defaultImg);
-      if (fs.existsSync(imgPath)) {
-        const fileName = 'boost_' + service.id + '_default.png';
-        files.push(new AttachmentBuilder(fs.readFileSync(imgPath), { name: fileName }));
-        mainEmbed.setImage('attachment://' + fileName);
-        imgCount = 1;
-      }
-    }
-  }
-  
-  for (let i = 0; i < allImages.length; i++) {
-    const parsed = base64ToBuffer(allImages[i]);
-    if (!parsed) continue;
-    const fileName = 'boost_' + service.id + '_' + (i + 1) + '.jpg';
-    files.push(new AttachmentBuilder(parsed.buffer, { name: fileName }));
-    imgCount++;
-    if (imgCount === 1) mainEmbed.setImage('attachment://' + fileName);
-    else embeds.push(new EmbedBuilder().setColor(brandColor).setImage('attachment://' + fileName));
-  }
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('orderboost_' + service.id).setLabel('اطلب الآن / Order Boost').setStyle(ButtonStyle.Success).setEmoji('🚀')
-  );
-  const msg = await channel.send({ embeds, components: [row], files });
-  service.discordMessageIds.push(msg.id);
-  saveStore();
+function viewCamo(id) {
+  const s = CACHE.camo.find(x => x.id === id); if (!s) return;
+  const cur = CACHE.settings.currency || '$';
+  const camosHtml = s.camoList && s.camoList.length ? s.camoList.map(c => {
+    const p = (c.price !== null && c.price !== undefined) ? c.price : s.pricePerCamo;
+    return `<div style="padding:4px 0;border-bottom:1px solid var(--border)">${c.emoji||'🎨'} <b>${escapeHtml(c.name)}</b> — ${cur}${p.toFixed(2)}</div>`;
+  }).join('') : '<p class="text-muted">No camos</p>';
+  const gunsHtml = s.gunList && s.gunList.length ? s.gunList.map(g => `<div style="padding:4px 0;border-bottom:1px solid var(--border)">${g.emoji||'🔫'} <b>${escapeHtml(g.name)}</b></div>`).join('') : '<p class="text-muted">Any gun (no gun selection)</p>';
+  showModal(`
+    <div class="modal-header"><h3>${escapeHtml(s.titleEn)}</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      ${s.images && s.images.length ? `<div style="display:flex;overflow-x:auto;gap:8px;margin-bottom:16px">${s.images.map(src=>`<img src="${src}" style="height:180px;border-radius:8px;border:1px solid var(--border)">`).join('')}</div>` : ''}
+      <div class="form-row-3">
+        <div class="form-field"><label>Game</label><div>${escapeHtml(s.game)}</div></div>
+        <div class="form-field"><label>Price per Camo</label><div class="mono" style="color:var(--gold);font-size:18px">${cur}${s.pricePerCamo.toFixed(2)}</div></div>
+        <div class="form-field"><label>ETA</label><div>${escapeHtml(s.eta||'-')}</div></div>
+      </div>
+      <div class="form-row">
+        <div class="form-field"><label>Available Camos (${s.camoList?s.camoList.length:0})</label><div>${camosHtml}</div></div>
+        <div class="form-field"><label>Available Guns (${s.gunList?s.gunList.length:0})</label><div>${gunsHtml}</div></div>
+      </div>
+      ${s.descriptionEn?`<div class="form-field"><label>Description (EN)</label><div>${escapeHtml(s.descriptionEn)}</div></div>`:''}
+      ${s.descriptionAr?`<div class="form-field"><label>Description (AR)</label><div>${escapeHtml(s.descriptionAr)}</div></div>`:''}
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" onclick="closeModal();editCamo(${s.id})"><i class="fa-solid fa-pen"></i> Edit</button></div>
+  `);
 }
-
-app.put('/api/boosting/:id', (req, res) => {
-  try {
-    const s = store.boostingServices.find(x => x.id === parseInt(req.params.id));
-    if (!s) return res.status(404).json({ error: 'Not found' });
-    const body = { ...req.body };
-    if (body.gunList) {
-      const parsed = parseGunListInput(body.gunList);
-      body.gunList = parsed.gunList;
-      body.gunCategories = parsed.gunCategories;
-    }
-    Object.assign(s, body, { id: s.id });
-    saveStore(); res.json(s);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/boosting/:id', async (req, res) => {
-  try {
-    const s = store.boostingServices.find(x => x.id === parseInt(req.params.id));
-    if (!s) return res.status(404).json({ error: 'Not found' });
-    // Delete Discord messages
-    if (s.discordMessageIds && s.discordMessageIds.length && client.isReady()) {
-      const channelId = store.settings.boostingChannelId || store.settings.accountsChannelId;
-      const ch = client.channels.cache.get(channelId);
-      if (ch) for (const mid of s.discordMessageIds) { try { await ch.messages.delete(mid); } catch(e){} }
-    }
-    store.boostingServices = store.boostingServices.filter(x => x.id !== parseInt(req.params.id));
-    saveStore(); res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Re-post a boosting service (delete old Discord message, re-post)
-app.post('/api/boosting/:id/repost', async (req, res) => {
-  try {
-    const s = store.boostingServices.find(x => x.id === parseInt(req.params.id));
-    if (!s) return res.status(404).json({ error: 'Not found' });
-    const channelId = store.settings.boostingChannelId || store.settings.accountsChannelId;
-    if (!channelId || !client.isReady()) return res.status(400).json({ error: 'Bot not ready or channel not set' });
-    const ch = client.channels.cache.get(channelId);
-    if (!ch) return res.status(400).json({ error: 'Channel not found' });
-    // Delete old messages
-    for (const mid of s.discordMessageIds) { try { await ch.messages.delete(mid); } catch(e){} }
-    s.discordMessageIds = [];
-    await postBoostingToDiscord(ch, s);
-    saveStore();
-    addLog('INFO', `Boosting service ${s.id} re-posted to Discord`);
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Mark a boosting order complete (admin delivers completion message + closes ticket)
-app.post('/api/boosting/:id/complete', async (req, res) => {
-  try {
-    const service = store.boostingServices.find(s => s.id === parseInt(req.params.id));
-    const ticket = store.tickets.find(t => t.boostingServiceId === parseInt(req.params.id) && t.status === 'boosting_in_progress');
-    if (!ticket) return res.status(404).json({ error: 'No in-progress boost ticket for this service' });
-    const pr = store.paymentRequests.find(p => p.id === ticket.paymentId);
-    if (pr) pr.status = 'Delivered';
-    ticket.status = 'closed';
-    ticket.closedAt = new Date().toISOString();
-    if (ticket.channelId && client.isReady()) {
-      const ch = client.channels.cache.get(ticket.channelId);
-      if (ch) {
-        const embed = new EmbedBuilder()
-          .setColor(0x3ddc84)
-          .setTitle('✅ تم اكتمال البوست بنجاح!')
-          .setDescription(
-            `**مرحباً ${ticket.userName}! 👋**\n\n` +
-            `🚨 تم اكتمال خدمة البوست بنجاح!\n\n` +
-            `**📋 تفاصيل الخدمة:**\n` +
-            `🚀 الخدمة: ${ticket.accountTitle}\n` +
-            `🎫 رقم التذكرة: \`${ticket.id}\`\n\n` +
-            `🎮 حسابك جاهز الآن — يمكنك الدخول والتحقق!\n\n` +
-            `🙏 شكراً لثقتك في **${store.settings.storeName}**!\n` +
-            `نتمنى نراك مرة أخرى 🌟`
-          )
-          .setFooter({ text: store.settings.storeName + ' • سيتم إغلاق التذكرة خلال ' + (store.settings.autoCloseSeconds || 15) + ' ثانية' })
-          .setTimestamp();
-        await ch.send({ embeds: [embed] });
-        setTimeout(async () => { try { await ch.delete('Boost complete — ticket auto-closed'); } catch (e) {} }, (store.settings.autoCloseSeconds || 15) * 1000);
-      }
-    }
-    // ===== DM the buyer that boost is complete =====
-    if (ticket.userId && client.isReady()) {
-      try {
-        const user = await client.users.fetch(ticket.userId);
-        const dmEmbed = new EmbedBuilder()
-          .setColor(0x3ddc84)
-          .setTitle('✅ تم اكتمال البوست بنجاح!')
-          .setDescription(
-            `**مرحباً ${ticket.userName}! 👋**\n\n` +
-            `🚨 تم اكتمال خدمة البوست بنجاح!\n\n` +
-            `**📋 تفاصيل الخدمة:**\n` +
-            `🚀 الخدمة: ${ticket.accountTitle}\n` +
-            `🎫 رقم التذكرة: \`${ticket.id}\`\n\n` +
-            `🎮 حسابك جاهز الآن — يمكنك الدخول والتحقق!\n\n` +
-            `🙏 شكراً لثقتك في **${store.settings.storeName}**!\n` +
-            `لأي استفسار، افتح تذكرة في السيرفر.`
-          )
-          .setFooter({ text: store.settings.storeName })
-          .setTimestamp();
-        await user.send({ embeds: [dmEmbed] });
-      } catch (e) {}
-    }
-    saveStore();
-    addLog('INFO', `Boosting service ${req.params.id} marked complete, ticket ${ticket.id} closing`);
-    sendLogToDiscord(`✅ Boost complete for ticket \`${ticket.id}\` — **${ticket.accountTitle}**`);
-    res.json({ success: true, ticketId: ticket.id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ===== CAMO UNLOCK SERVICES (CoD/Warzone weapon camo unlock — admin adds camo names) =====
-app.get('/api/camo', (req, res) => { try { res.json(store.camoServices); } catch (e) { res.status(500).json({ error: e.message }); } });
-
-app.post('/api/camo', async (req, res) => {
-  try {
-    const { titleEn, titleAr, game, pricePerCamo, camoList, gunList, eta, descriptionEn, descriptionAr, images } = req.body;
-    if (!titleEn || !pricePerCamo) return res.status(400).json({ error: 'Title and price per camo required' });
-    const service = {
-      id: genId(), titleEn, titleAr: titleAr || '',
-      game: game || 'Call of Duty Warzone',
-      pricePerCamo: parseFloat(pricePerCamo),
-      // camoList: array of { name, emoji, price } — admin adds the camo names
-      // If price is 0/empty, uses pricePerCamo as default
-      camoList: Array.isArray(camoList) ? camoList.map(parseCamoEntry) : (camoList ? String(camoList).split('\n').map(s=>s.trim()).filter(Boolean).map(parseCamoEntry) : []),
-      // gunList: array of { name, emoji } — optional, if empty customer just picks camos
-      gunList: parseGunListInput(gunList).gunList,
-      gunCategories: parseGunListInput(gunList).gunCategories,
-      eta: eta || '24-72 hours',
-      descriptionEn: descriptionEn || '', descriptionAr: descriptionAr || '',
-      images: Array.isArray(images) ? images : [],
-      status: 'active',
-      createdAt: new Date().toISOString(), discordMessageIds: []
-    };
-    store.camoServices.push(service);
-    saveStore();
-    const channelId = store.settings.camoChannelId || store.settings.accountsChannelId;
-    if (channelId && client.isReady()) {
-      const channel = client.channels.cache.get(channelId);
-      if (channel) await postCamoToDiscord(channel, service).catch(e => addLog('ERROR', 'Camo post failed: ' + e.message));
-    }
-    addLog('INFO', `Camo service created: ${titleEn} (${service.camoList.length} camos)`);
-    res.json(service);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Parse camo entry: '🟡 Gold:5' or 'Gold:5' or '🟡 Gold' (uses pricePerCamo if no price)
-function parseCamoEntry(line) {
-  if (typeof line === 'object') return line;
-  const trimmed = String(line).trim();
-  let emoji = '';
-  let rest = trimmed;
-  // Custom emoji
-  const customMatch = trimmed.match(/^<:(\w+):(\d+)>\s*(.+)$/);
-  if (customMatch) { emoji = { id: customMatch[2], name: customMatch[1] }; rest = customMatch[3]; }
-  else {
-    const unicodeMatch = trimmed.match(/^(\p{Extended_Pictographic}|\p{Emoji})(\uFE0F)?(?:\u200D(?:\p{Extended_Pictographic}|\p{Emoji}))*\s*(.+)$/u);
-    if (unicodeMatch) { emoji = trimmed.slice(0, trimmed.length - unicodeMatch[3].length).trim(); rest = unicodeMatch[3]; }
-  }
-  // rest = 'CamoName:price' or just 'CamoName'
-  const parts = rest.split(':');
-  const name = parts[0].trim();
-  const price = parts[1] ? parseFloat(parts[1]) : null; // null = use service.pricePerCamo
-  return { name, emoji, price };
+function editCamo(id) { openCamoModal(id); }
+async function repostCamo(id) {
+  if (!confirm('Re-post this camo service to Discord? Old message will be deleted.')) return;
+  try { await api(`camo/${id}/repost`, { method:'POST' }); toast('success', 'Re-posted to Discord'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
 }
-
-async function postCamoToDiscord(channel, service) {
-  const brandColor = store.settings.color || 0x9b59ff;
-  const cur = store.settings.currency;
-  const allImages = service.images || [];
-  const mainEmbed = new EmbedBuilder()
-    .setColor(brandColor)
-    .setTitle('🎨 ' + service.titleEn)
-    .setDescription(
-      (service.titleAr ? '**' + service.titleAr + '**\n' : '') +
-      '```yaml\n' + service.game + ' • camo unlock```\n' +
-      (service.descriptionEn ? '📋 ' + service.descriptionEn + '\n' : '') +
-      (service.descriptionAr ? '📋 ' + service.descriptionAr + '\n' : '')
-    )
-    .addFields(
-      { name: '🎮 Game', value: service.game, inline: true },
-      { name: '⏱️ ETA', value: service.eta, inline: true },
-      { name: '💰 Starting from', value: '```fix\n' + cur + service.pricePerCamo.toFixed(2) + ' per camo```', inline: false }
-    );
-  // Show camo list with emojis
-  if (service.camoList && service.camoList.length > 0) {
-    const camosText = service.camoList.slice(0, 20).map(c => {
-      const em = c.emoji ? (typeof c.emoji === 'object' ? '<:'+c.emoji.name+':'+c.emoji.id+'>' : c.emoji) + ' ' : '';
-      const p = c.price !== null && c.price !== undefined ? c.price : service.pricePerCamo;
-      return em + '`' + c.name + '` (' + cur + p.toFixed(2) + ')';
-    }).join(', ');
-    mainEmbed.addFields({ name: '🎨 Available Camos', value: camosText + (service.camoList.length > 20 ? '\n*(+' + (service.camoList.length - 20) + ' more)*' : ''), inline: false });
-  }
-  // Show gun list if defined
-  if (service.gunList && service.gunList.length > 0) {
-    const gunsText = service.gunList.slice(0, 20).map(g => {
-      const em = g.emoji ? (typeof g.emoji === 'object' ? '<:'+g.emoji.name+':'+g.emoji.id+'>' : g.emoji) + ' ' : '';
-      return em + '`' + g.name + '`';
-    }).join(', ');
-    mainEmbed.addFields({ name: '🔫 Available Guns', value: gunsText, inline: false });
-  }
-  mainEmbed.setFooter({ text: store.settings.storeName + ' • Camo Unlock • ID: ' + service.id + ' • Click Order to pick your camos' });
-  mainEmbed.setTimestamp();
-
-  const files = [];
-  const embeds = [mainEmbed];
-  let imgCount = 0;
-  
-  // Auto-attach default camo image if no custom images
-  if (allImages.length === 0) {
-    const imgPath = path.join(__dirname, 'images', 'camo-unlock.png');
-    if (fs.existsSync(imgPath)) {
-      const fileName = 'camo_' + service.id + '_default.png';
-      files.push(new AttachmentBuilder(fs.readFileSync(imgPath), { name: fileName }));
-      mainEmbed.setImage('attachment://' + fileName);
-      imgCount = 1;
-    }
-  }
-  
-  for (let i = 0; i < allImages.length; i++) {
-    const parsed = base64ToBuffer(allImages[i]);
-    if (!parsed) continue;
-    const fileName = 'camo_' + service.id + '_' + (i + 1) + '.jpg';
-    files.push(new AttachmentBuilder(parsed.buffer, { name: fileName }));
-    imgCount++;
-    if (imgCount === 1) mainEmbed.setImage('attachment://' + fileName);
-    else embeds.push(new EmbedBuilder().setColor(brandColor).setImage('attachment://' + fileName));
-  }
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('ordercamo_' + service.id).setLabel('اطلب الآن / Order Camo Unlock').setStyle(ButtonStyle.Success).setEmoji('🎨')
-  );
-  const msg = await channel.send({ embeds, components: [row], files });
-  service.discordMessageIds.push(msg.id);
-  saveStore();
+async function deleteCamo(id) {
+  if (!confirm('Delete this camo service?')) return;
+  try { await api('camo/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
 }
-
-app.put('/api/camo/:id', (req, res) => {
-  try {
-    const s = store.camoServices.find(x => x.id === parseInt(req.params.id));
-    if (!s) return res.status(404).json({ error: 'Not found' });
-    const body = { ...req.body };
-    if (Array.isArray(body.camoList)) body.camoList = body.camoList.map(parseCamoEntry);
-    if (body.gunList) {
-      const parsed = parseGunListInput(body.gunList);
-      body.gunList = parsed.gunList;
-      body.gunCategories = parsed.gunCategories;
-    }
-    Object.assign(s, body, { id: s.id });
-    saveStore(); res.json(s);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/camo/:id', async (req, res) => {
-  try {
-    const s = store.camoServices.find(x => x.id === parseInt(req.params.id));
-    if (!s) return res.status(404).json({ error: 'Not found' });
-    if (s.discordMessageIds && s.discordMessageIds.length && client.isReady()) {
-      const channelId = store.settings.camoChannelId || store.settings.accountsChannelId;
-      const ch = client.channels.cache.get(channelId);
-      if (ch) for (const mid of s.discordMessageIds) { try { await ch.messages.delete(mid); } catch(e){} }
-    }
-    store.camoServices = store.camoServices.filter(x => x.id !== parseInt(req.params.id));
-    saveStore(); res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/camo/:id/repost', async (req, res) => {
-  try {
-    const s = store.camoServices.find(x => x.id === parseInt(req.params.id));
-    if (!s) return res.status(404).json({ error: 'Not found' });
-    const channelId = store.settings.camoChannelId || store.settings.accountsChannelId;
-    if (!channelId || !client.isReady()) return res.status(400).json({ error: 'Bot not ready or channel not set' });
-    const ch = client.channels.cache.get(channelId);
-    if (!ch) return res.status(400).json({ error: 'Channel not found' });
-    for (const mid of s.discordMessageIds) { try { await ch.messages.delete(mid); } catch(e){} }
-    s.discordMessageIds = [];
-    await postCamoToDiscord(ch, s);
-    saveStore();
-    addLog('INFO', `Camo service ${s.id} re-posted to Discord`);
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Mark a camo order complete (admin delivers completion message + closes ticket)
-app.post('/api/camo/:id/complete', async (req, res) => {
-  try {
-    const ticket = store.tickets.find(t => t.camoServiceId === parseInt(req.params.id) && t.status === 'camo_in_progress');
-    if (!ticket) return res.status(404).json({ error: 'No in-progress camo ticket for this service' });
-    const pr = store.paymentRequests.find(p => p.id === ticket.paymentId);
-    if (pr) pr.status = 'Delivered';
-    ticket.status = 'closed';
-    ticket.closedAt = new Date().toISOString();
-    if (ticket.channelId && client.isReady()) {
-      const ch = client.channels.cache.get(ticket.channelId);
-      if (ch) {
-        const embed = new EmbedBuilder()
-          .setColor(0x3ddc84)
-          .setTitle('✅ تم اكتمال فتح الكاموهات!')
-          .setDescription(
-            `**مرحباً ${ticket.userName}! 👋**\n\n` +
-            `🎨 تم فتح جميع الكاموهات المطلوبة بنجاح!\n\n` +
-            `**📋 تفاصيل الخدمة:**\n` +
-            `🎨 الخدمة: ${ticket.accountTitle}\n` +
-            `🎫 رقم التذكرة: \`${ticket.id}\`\n\n` +
-            `🎮 حسابك جاهز الآن — يمكنك الدخول والتحقق من الكاموهات!\n\n` +
-            `🙏 شكراً لثقتك في **${store.settings.storeName}**!\n` +
-            `نتمنى نراك مرة أخرى 🌟`
-          )
-          .setFooter({ text: store.settings.storeName + ' • سيتم إغلاق التذكرة خلال ' + (store.settings.autoCloseSeconds || 15) + ' ثانية' })
-          .setTimestamp();
-        await ch.send({ embeds: [embed] });
-        setTimeout(async () => { try { await ch.delete('Camo complete — ticket auto-closed'); } catch (e) {} }, (store.settings.autoCloseSeconds || 15) * 1000);
-      }
-    }
-    // ===== DM the buyer that camo unlock is complete =====
-    if (ticket.userId && client.isReady()) {
-      try {
-        const user = await client.users.fetch(ticket.userId);
-        const dmEmbed = new EmbedBuilder()
-          .setColor(0x3ddc84)
-          .setTitle('✅ تم اكتمال فتح الكاموهات!')
-          .setDescription(
-            `**مرحباً ${ticket.userName}! 👋**\n\n` +
-            `🎨 تم فتح جميع الكاموهات المطلوبة بنجاح!\n\n` +
-            `**📋 تفاصيل الخدمة:**\n` +
-            `🎨 الخدمة: ${ticket.accountTitle}\n` +
-            `🎫 رقم التذكرة: \`${ticket.id}\`\n\n` +
-            `🎮 حسابك جاهز الآن — يمكنك الدخول والتحقق من الكاموهات!\n\n` +
-            `🙏 شكراً لثقتك في **${store.settings.storeName}**!\n` +
-            `لأي استفسار، افتح تذكرة في السيرفر.`
-          )
-          .setFooter({ text: store.settings.storeName })
-          .setTimestamp();
-        await user.send({ embeds: [dmEmbed] });
-      } catch (e) {}
-    }
-    saveStore();
-    addLog('INFO', `Camo service ${req.params.id} marked complete, ticket ${ticket.id} closing`);
-    sendLogToDiscord(`🎨 Camo complete for ticket \`${ticket.id}\` — **${ticket.accountTitle}**`);
-    res.json({ success: true, ticketId: ticket.id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
 
 // ===== COUPONS =====
-app.get('/api/coupons', (req, res) => { try { res.json(store.coupons); } catch (e) { res.status(500).json({ error: e.message }); } });
+function renderCoupons(c) {
+  const coupons = CACHE.coupons || [];
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header">
+        <div><h2>Coupons</h2><p>Discount codes customers can apply inside purchase tickets.</p></div>
+        <button class="btn btn-primary" onclick="openCouponModal()"><i class="fa-solid fa-plus"></i> New Coupon</button>
+      </div>
+      ${coupons.length === 0 ? '<div class="empty"><i class="fa-solid fa-ticket"></i><p>No coupons yet.</p><button class="btn btn-primary" onclick="openCouponModal()"><i class="fa-solid fa-plus"></i> Create Coupon</button></div>' :
+        `<div class="panel-card"><table class="data-table">
+          <thead><tr><th>Code</th><th>Type</th><th>Value</th><th>Uses</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>${coupons.map(co => {
+            const expired = co.expiresAt && new Date(co.expiresAt) < new Date();
+            const exhausted = co.uses >= co.maxUses;
+            const active = co.active && !expired && !exhausted;
+            return `<tr>
+              <td><span class="mono" style="background:var(--accent-dim);color:var(--accent);padding:3px 8px;border-radius:6px;font-weight:700">${escapeHtml(co.code)}</span></td>
+              <td>${co.type === 'percent' ? '%' : 'Fixed'}</td>
+              <td>${co.type === 'percent' ? co.value + '%' : (CACHE.settings.currency||'$') + co.value.toFixed(2)}</td>
+              <td>${co.uses} / ${co.maxUses >= 999999 ? '∞' : co.maxUses}</td>
+              <td>${co.expiresAt ? new Date(co.expiresAt).toLocaleDateString() : 'Never'}</td>
+              <td><span class="badge ${active?'available':'dead'}">${active?'Active':expired?'Expired':exhausted?'Used':'Inactive'}</span></td>
+              <td>
+                <button class="btn btn-sm" onclick="toggleCoupon(${co.id})">${co.active?'Disable':'Enable'}</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteCoupon(${co.id})"><i class="fa-solid fa-trash"></i></button>
+              </td>
+            </tr>`;}).join('')}</tbody>
+        </table></div>`}
+    </div>`;
+}
+function openCouponModal() {
+  showModal(`
+    <div class="modal-header"><h3>New Coupon</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-row"><div class="form-field"><label>Code *</label><input id="c_code" placeholder="SUMMER20" style="text-transform:uppercase"></div>
+      <div class="form-field"><label>Type</label><select id="c_type"><option value="percent">Percentage (%)</option><option value="fixed">Fixed Amount</option></select></div></div>
+      <div class="form-row"><div class="form-field"><label>Value *</label><input id="c_value" type="number" step="0.01" placeholder="20"></div>
+      <div class="form-field"><label>Max Uses</label><input id="c_maxUses" type="number" value="100"></div></div>
+      <div class="form-field"><label>Expires At (optional)</label><input id="c_expiresAt" type="datetime-local"></div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCoupon()"><i class="fa-solid fa-save"></i> Create</button></div>
+  `);
+}
+async function saveCoupon() {
+  const data = {
+    code: val('c_code'), type: val('c_type'), value: parseFloat(val('c_value')),
+    maxUses: parseInt(val('c_maxUses')) || 100,
+    expiresAt: val('c_expiresAt') ? new Date(val('c_expiresAt')).toISOString() : null
+  };
+  if (!data.code || !data.value) return toast('error', 'Code and value required');
+  try { await api('coupons', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Coupon created'); closeModal(); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+async function toggleCoupon(id) {
+  const co = CACHE.coupons.find(c=>c.id===id); if (!co) return;
+  try { await api('coupons/'+id, { method:'PUT', body: JSON.stringify({ active: !co.active }) }); toast('success', 'Coupon updated'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+async function deleteCoupon(id) {
+  if (!confirm('Delete this coupon?')) return;
+  try { await api('coupons/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
 
-app.post('/api/coupons', (req, res) => {
-  try {
-    const { code, type, value, maxUses, expiresAt, active } = req.body;
-    if (!code || !type || value === undefined) return res.status(400).json({ error: 'code, type, value required' });
-    if (store.coupons.find(c => c.code.toUpperCase() === code.toUpperCase())) return res.status(400).json({ error: 'Coupon code already exists' });
-    const coupon = {
-      id: genId(),
-      code: code.toUpperCase(),
-      type: type === 'percent' ? 'percent' : 'fixed', // percent | fixed
-      value: parseFloat(value),
-      maxUses: parseInt(maxUses) || 999999,
-      uses: 0,
-      expiresAt: expiresAt || null,
-      active: active !== false,
-      createdAt: new Date().toISOString()
-    };
-    store.coupons.push(coupon);
-    saveStore();
-    addLog('INFO', `Coupon created: ${coupon.code}`);
-    res.json(coupon);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+// ===== ORDERS =====
+function renderOrders(c) {
+  const orders = CACHE.orders || [];
+  const cur = CACHE.settings.currency || '$';
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header"><div><h2>Orders</h2><p>${orders.length} total orders</p></div></div>
+      <div class="filter-bar">
+        <input type="text" id="ordSearch" placeholder="🔍 Search order ID or customer..." oninput="renderOrdersTable()">
+        <select id="ordStatusFilter" onchange="renderOrdersTable()">
+          <option value="All">All Status</option><option>Delivered</option><option>Pending</option><option>Refunded</option>
+        </select>
+      </div>
+      <div class="panel-card"><div id="ordTable"></div></div>
+    </div>`;
+  renderOrdersTable();
+}
+function renderOrdersTable() {
+  const q = (document.getElementById('ordSearch')?.value || '').toLowerCase();
+  const st = document.getElementById('ordStatusFilter')?.value || 'All';
+  let list = CACHE.orders.filter(o => {
+    if (q && !o.id.toLowerCase().includes(q) && !(o.cust||'').toLowerCase().includes(q)) return false;
+    if (st !== 'All' && o.status !== st) return false;
+    return true;
+  });
+  const cur = CACHE.settings.currency || '$';
+  const el = document.getElementById('ordTable');
+  if (!list.length) { el.innerHTML = '<div class="empty"><i class="fa-solid fa-receipt"></i><p>No orders found</p></div>'; return; }
+  el.innerHTML = `<table class="data-table">
+    <thead><tr><th>Order ID</th><th>Customer</th><th>Item</th><th>Amount</th><th>Method</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${list.map(o => `<tr>
+      <td class="mono">${o.id}</td>
+      <td>${escapeHtml(o.cust||'-')}</td>
+      <td>${escapeHtml(o.item||'-')}</td>
+      <td class="mono">${cur}${(o.amount||0).toFixed(2)}${o.couponCode?` <span class="text-xs text-muted">(was ${cur}${(o.originalAmount||o.amount).toFixed(2)})</span>`:''}</td>
+      <td>${o.paymentMethod||'-'}</td>
+      <td class="text-xs">${o.date||'-'}</td>
+      <td><span class="badge ${o.status}">${o.status}</span></td>
+      <td>
+        ${o.status==='Delivered'?`<button class="btn btn-sm btn-warn" onclick="refundOrder('${o.id}')">Refund</button>`:''}
+        ${o.status==='Pending'?`<button class="btn btn-sm btn-success" onclick="deliverOrder('${o.id}')"><i class="fa-solid fa-check"></i> Deliver</button>`:''}
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+}
+async function deliverOrder(id) {
+  if (!confirm('Mark this order as delivered & send credentials?')) return;
+  try { await api(`orders/${id}/deliver`, { method:'POST' }); toast('success', 'Delivered'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+async function refundOrder(id) {
+  if (!confirm('Refund this order? Account will be marked available again.')) return;
+  try { await api(`orders/${id}/refund`, { method:'POST' }); toast('success', 'Refunded'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
 
-app.put('/api/coupons/:id', (req, res) => {
+// ===== PAYMENTS =====
+function renderPayments(c) {
+  const pays = CACHE.payments || [];
+  const cur = CACHE.settings.currency || '$';
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header"><div><h2>Payment Requests</h2><p>${pays.filter(p=>p.status==='Waiting Review'||p.status==='Pending').length} need your attention</p></div></div>
+      <div class="filter-bar">
+        <select id="payFilter" onchange="renderPaymentsList()">
+          <option value="All">All</option><option value="Waiting Review">Waiting Review</option>
+          <option value="Pending">Pending</option><option value="Approved">Approved</option><option value="Rejected">Rejected</option>
+        </select>
+      </div>
+      <div id="payList"></div>
+    </div>`;
+  renderPaymentsList();
+}
+function renderPaymentsList() {
+  const f = document.getElementById('payFilter')?.value || 'All';
+  let list = CACHE.payments;
+  if (f !== 'All') list = list.filter(p => p.status === f);
+  const cur = CACHE.settings.currency || '$';
+  const el = document.getElementById('payList');
+  if (!list.length) { el.innerHTML = '<div class="empty"><i class="fa-solid fa-money-bill-wave"></i><p>No payment requests</p></div>'; return; }
+  el.innerHTML = list.map(p => `
+    <div class="panel-card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:start;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <span class="mono" style="background:var(--bg-input);padding:3px 8px;border-radius:6px;font-weight:600">${p.id}</span>
+            <span class="badge ${p.status}">${p.status}</span>
+          </div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px">${escapeHtml(p.accountTitle)}</div>
+          <div class="text-sm text-muted">
+            👤 ${escapeHtml(p.userName)} • 💳 ${p.method} • 📅 ${p.date||'-'}<br>
+            💰 ${cur}${(p.discountedAmount||p.amount).toFixed(2)}${p.couponCode?` <span style="color:var(--green)">(coupon: ${p.couponCode})</span>`:''}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${p.proofUrl?`<button class="btn btn-sm" onclick="window.open('${p.proofUrl}','_blank')"><i class="fa-solid fa-image"></i> View Receipt</button>`:''}
+          ${(p.status==='Waiting Review'||p.status==='Pending')?`
+            <button class="btn btn-sm btn-success" onclick="approvePayment('${p.id}')"><i class="fa-solid fa-check"></i> Approve & Deliver</button>
+            <button class="btn btn-sm btn-danger" onclick="rejectPayment('${p.id}')"><i class="fa-solid fa-times"></i> Reject</button>
+          `:''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+async function approvePayment(id) {
+  if (!confirm('Approve this payment & deliver the account? Ticket will auto-close.')) return;
   try {
-    const c = store.coupons.find(x => x.id === parseInt(req.params.id));
-    if (!c) return res.status(404).json({ error: 'Not found' });
-    Object.assign(c, req.body, { id: c.id });
-    saveStore();
-    res.json(c);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+    const r = await api(`payments/${id}/approve`, { method:'POST' });
+    toast('success', 'Payment approved & delivered!');
+    refreshAll(true);
+  } catch (e) { toast('error', e.message); }
+}
+async function rejectPayment(id) {
+  const reason = prompt('Reason for rejection (optional):') || '';
+  try { await api(`payments/${id}/reject`, { method:'POST', body: JSON.stringify({ reason }) }); toast('warn', 'Payment rejected — customer notified'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
 
-app.delete('/api/coupons/:id', (req, res) => {
-  try {
-    store.coupons = store.coupons.filter(c => c.id !== parseInt(req.params.id));
-    saveStore();
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+// ===== TICKETS =====
+function renderTickets(c) {
+  const tickets = CACHE.tickets || [];
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header"><div><h2>Support Tickets</h2><p>${tickets.filter(t=>t.status!=='closed').length} open</p></div></div>
+      <div class="filter-bar">
+        <select id="tickFilter" onchange="renderTicketsList()">
+          <option value="All">All</option><option value="open">Open</option>
+          <option value="waiting_payment">Waiting Payment</option><option value="waiting_review">Waiting Review</option>
+          <option value="boosting_in_progress">Boosting In Progress</option>
+          <option value="camo_in_progress">Camo In Progress</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+      <div id="tickList"></div>
+    </div>`;
+  renderTicketsList();
+}
+function renderTicketsList() {
+  const f = document.getElementById('tickFilter')?.value || 'All';
+  let list = CACHE.tickets;
+  if (f !== 'All') list = list.filter(t => t.status === f);
+  const cur = CACHE.settings.currency || '$';
+  const el = document.getElementById('tickList');
+  if (!list.length) { el.innerHTML = '<div class="empty"><i class="fa-solid fa-headset"></i><p>No tickets</p></div>'; return; }
+  el.innerHTML = list.map(t => `
+    <div class="panel-card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:start;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <span class="mono" style="background:var(--bg-input);padding:3px 8px;border-radius:6px;font-weight:600">${t.id}</span>
+            <span class="badge ${t.status}">${t.status.replace('_',' ')}</span>
+          </div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px">${escapeHtml(t.accountTitle)}</div>
+          <div class="text-sm text-muted">
+            👤 ${escapeHtml(t.userName)} • 💰 ${cur}${(t.discountedAmount||t.amount||0).toFixed(2)}${t.paymentMethod?' • 💳 '+t.paymentMethod:''}<br>
+            📅 Opened: ${new Date(t.createdAt).toLocaleString()}${t.couponCode?` • 🎁 ${t.couponCode}`:''}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${t.channelId?`<button class="btn btn-sm" onclick="window.open('https://discord.com/channels/@me/${t.channelId}','_blank')"><i class="fa-brands fa-discord"></i> Open</button>`:''}
+          ${t.status==='boosting_in_progress'&&t.boostingServiceId?`<button class="btn btn-sm btn-success" onclick="completeBoosting(${t.boostingServiceId})"><i class="fa-solid fa-check"></i> Complete Boost</button>`:''}
+          ${t.status==='camo_in_progress'&&t.camoServiceId?`<button class="btn btn-sm btn-success" onclick="completeCamo(${t.camoServiceId})"><i class="fa-solid fa-check"></i> Complete Camo</button>`:''}
+          ${t.status!=='closed'?`<button class="btn btn-sm btn-danger" onclick="closeTicket('${t.id}')"><i class="fa-solid fa-lock"></i> Close</button>`:''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+async function closeTicket(id) {
+  if (!confirm('Close this ticket? Channel will be deleted.')) return;
+  try { await api(`tickets/${id}/close`, { method:'POST' }); toast('success', 'Ticket closed'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+
+// ===== CUSTOMERS =====
+function renderCustomers(c) {
+  const custs = CACHE.customers || [];
+  const cur = CACHE.settings.currency || '$';
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header"><div><h2>Customers</h2><p>${custs.length} total</p></div>
+        <button class="btn" onclick="openBroadcastModal()"><i class="fa-solid fa-bullhorn"></i> Broadcast DM</button>
+      </div>
+      ${custs.length === 0 ? '<div class="empty"><i class="fa-solid fa-users"></i><p>No customers yet</p></div>' :
+        `<div class="panel-card"><table class="data-table">
+          <thead><tr><th>Name</th><th>Discord ID</th><th>Purchases</th><th>Spent</th><th>Trust</th><th>Joined</th><th>Actions</th></tr></thead>
+          <tbody>${custs.map(cu => `<tr>
+            <td>${escapeHtml(cu.name||'-')}</td>
+            <td class="mono text-xs">${cu.discordId||'-'}</td>
+            <td>${cu.purchases||0}</td>
+            <td class="mono">${cur}${(cu.spent||0).toFixed(2)}</td>
+            <td><span class="badge ${cu.trust==='Blacklisted'?'rejected':'delivered'}">${cu.trust||'Verified'}</span></td>
+            <td class="text-xs">${cu.joined||'-'}</td>
+            <td>
+              ${cu.trust==='Blacklisted'?
+                `<button class="btn btn-sm btn-success" onclick="toggleBlacklist('${cu.id}',false)">Unblacklist</button>`:
+                `<button class="btn btn-sm btn-danger" onclick="toggleBlacklist('${cu.id}',true)">Blacklist</button>`}
+            </td>
+          </tr>`).join('')}</tbody>
+        </table></div>`}
+    </div>`;
+}
+async function toggleBlacklist(id, blacklist) {
+  try { await api(`customers/${id}/${blacklist?'blacklist':'unblacklist'}`, { method:'POST' }); toast('success', 'Updated'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+function openBroadcastModal() {
+  showModal(`
+    <div class="modal-header"><h3>Broadcast DM</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <p class="text-sm text-muted mb-3">Sends a DM to all non-blacklisted customers. Use sparingly to avoid Discord rate limits.</p>
+      <div class="form-field"><label>Message</label><textarea id="bcastMsg" style="min-height:140px" placeholder="📢 Special offer this week!"></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="sendBroadcast()"><i class="fa-solid fa-paper-plane"></i> Send</button></div>
+  `);
+}
+async function sendBroadcast() {
+  const msg = val('bcastMsg'); if (!msg) return toast('error', 'Message required');
+  if (!confirm('Send this DM to ALL non-blacklisted customers?')) return;
+  try { const r = await api('broadcast', { method:'POST', body: JSON.stringify({ message: msg }) }); toast('success', `Sent to ${r.sent} customers (${r.failed} failed)`); closeModal(); }
+  catch (e) { toast('error', e.message); }
+}
 
 // ===== SETTINGS =====
-app.get('/api/settings', (req, res) => { try { res.json(store.settings); } catch (e) { res.status(500).json({ error: e.message }); } });
-app.post('/api/settings', (req, res) => { try { Object.assign(store.settings, req.body); saveStore(); addLog('INFO', 'Settings updated'); res.json(store.settings); } catch (e) { res.status(500).json({ error: e.message }); } });
+function renderSettings(c) {
+  const s = CACHE.settings || {};
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header"><div><h2>Settings</h2><p>Configure your store, channels, and payment methods.</p></div></div>
+      <div class="panel-card">
+        <h3><i class="fa-solid fa-store"></i> Store</h3>
+        <div class="form-row"><div class="form-field"><label>Store Name</label><input id="s_storeName" value="${escapeAttr(s.storeName||'isiam store')}"></div>
+        <div class="form-field"><label>Currency Symbol</label><input id="s_currency" value="${escapeAttr(s.currency||'$')}" maxlength="3"></div></div>
+        <div class="form-row"><div class="form-field"><label>Brand Color (hex)</label><input id="s_color" value="${(s.color||0x9b59ff).toString(16).padStart(6,'0')}" placeholder="9b59ff"></div>
+        <div class="form-field"><label>Auto-Close Ticket (seconds)</label><input id="s_autoClose" type="number" value="${s.autoCloseSeconds||15}"></div></div>
+      </div>
+      <div class="panel-card">
+        <h3><i class="fa-solid fa-hashtag"></i> Discord Channels & Roles</h3>
+        <div class="form-row"><div class="form-field"><label>Products Channel ID</label><input id="s_accCh" value="${escapeAttr(s.accountsChannelId||'')}" placeholder="1234567890"></div>
+        <div class="form-field"><label>Ticket Category ID</label><input id="s_tktCat" value="${escapeAttr(s.ticketCategoryId||'')}" placeholder="1234567890"></div></div>
+        <div class="form-row"><div class="form-field"><label>Digital Products Channel ID</label><input id="s_digCh" value="${escapeAttr(s.digitalChannelId||'')}" placeholder="fallback to Products Channel"></div>
+        <div class="form-field"><label>Boosting Services Channel ID</label><input id="s_boostCh" value="${escapeAttr(s.boostingChannelId||'')}" placeholder="fallback to Products Channel"></div></div>
+        <div class="form-row"><div class="form-field"><label>Camo Unlock Channel ID</label><input id="s_camoCh" value="${escapeAttr(s.camoChannelId||'')}" placeholder="fallback to Products Channel"></div>
+        <div class="form-field"><label>Log Channel ID</label><input id="s_logCh" value="${escapeAttr(s.logChannelId||'')}" placeholder="1234567890"></div></div>
+        <div class="form-row"><div class="form-field"><label>Owner Discord ID</label><input id="s_owner" value="${escapeAttr(s.ownerId||'')}" placeholder="Your Discord ID"></div>
+        <div class="form-field"><label>Staff Role IDs (comma-separated)</label><input id="s_staff" value="${escapeAttr((s.staffRoleIds||[]).join(','))}" placeholder="123,456,789"></div></div>
+      </div>
+      <div class="panel-card">
+        <h3><i class="fa-solid fa-credit-card"></i> Payment Methods</h3>
+        <div class="form-row"><div class="form-field"><label>STC Pay Number</label><input id="s_stcNum" value="${escapeAttr(s.stcPay?.number||'')}"></div>
+        <div class="form-field"><label>STC Pay Name</label><input id="s_stcName" value="${escapeAttr(s.stcPay?.name||'')}"></div></div>
+        <div class="form-row"><div class="form-field"><label>AlRajhi IBAN</label><input id="s_iban" value="${escapeAttr(s.alrajhi?.iban||'')}"></div>
+        <div class="form-field"><label>AlRajhi Name</label><input id="s_alrajhiName" value="${escapeAttr(s.alrajhi?.name||'')}"></div></div>
+        <div class="form-row"><div class="form-field"><label>PayPal Link</label><input id="s_paypal" value="${escapeAttr(s.paypal?.email||'')}" placeholder="https://www.paypal.com/paypalme/yourname"></div>
+        <div class="form-field"><label>PayPal Name</label><input id="s_paypalName" value="${escapeAttr(s.paypal?.name||'')}"></div></div>
+      </div>
+      <div class="panel-card">
+        <h3><i class="fa-solid fa-file-lines"></i> Welcome & Terms</h3>
+        <div class="form-field mb-3"><label>Welcome Message (Arabic)</label><textarea id="s_welcomeAr">${escapeHtml(s.welcomeAr||'')}</textarea></div>
+        <div class="form-field mb-3"><label>Welcome Message (English)</label><textarea id="s_welcomeEn">${escapeHtml(s.welcomeEn||'')}</textarea></div>
+        <div class="form-row"><div class="form-field"><label>Terms (Arabic)</label><textarea id="s_termsAr" style="min-height:120px">${escapeHtml(s.termsAr||'')}</textarea></div>
+        <div class="form-field"><label>Terms (English)</label><textarea id="s_termsEn" style="min-height:120px">${escapeHtml(s.termsEn||'')}</textarea></div></div>
+      </div>
+      <div class="panel-card">
+        <h3><i class="fa-solid fa-database"></i> Backup & Restore</h3>
+        <p class="text-sm text-muted mb-3">Export full store data, or restore from a backup file.</p>
+        <div class="flex gap-2">
+          <button class="btn" onclick="window.location.href='/api/backup?session='+SESSION"><i class="fa-solid fa-download"></i> Download Backup</button>
+          <button class="btn" onclick="document.getElementById('restoreFile').click()"><i class="fa-solid fa-upload"></i> Restore Backup</button>
+          <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="restoreBackup(event)">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-primary" onclick="saveSettings()"><i class="fa-solid fa-save"></i> Save All Settings</button>
+      </div>
+    </div>`;
+}
+async function saveSettings() {
+  const staff = val('s_staff').split(',').map(s=>s.trim()).filter(Boolean);
+  let color = val('s_color').replace('#',''); color = parseInt(color, 16) || 0x9b59ff;
+  const data = {
+    storeName: val('s_storeName'), currency: val('s_currency'),
+    color, autoCloseSeconds: parseInt(val('s_autoClose')) || 15,
+    accountsChannelId: val('s_accCh'), digitalChannelId: val('s_digCh'), boostingChannelId: val('s_boostCh'), camoChannelId: val('s_camoCh'),
+    ticketCategoryId: val('s_tktCat'),
+    logChannelId: val('s_logCh'), ownerId: val('s_owner'), staffRoleIds: staff,
+    stcPay: { number: val('s_stcNum'), name: val('s_stcName') },
+    alrajhi: { iban: val('s_iban'), name: val('s_alrajhiName') },
+    paypal: { email: val('s_paypal'), name: val('s_paypalName') },
+    welcomeAr: val('s_welcomeAr'), welcomeEn: val('s_welcomeEn'),
+    termsAr: val('s_termsAr'), termsEn: val('s_termsEn')
+  };
+  try { await api('settings', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Settings saved'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+async function restoreBackup(e) {
+  const file = e.target.files[0]; if (!file) return;
+  if (!confirm('Restore from this backup? Current data will be replaced.')) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    await api('restore', { method:'POST', body: JSON.stringify(data) });
+    toast('success', 'Backup restored'); refreshAll(true);
+  } catch (e) { toast('error', 'Invalid backup file'); }
+}
 
 // ===== LOGS =====
-app.get('/api/logs', (req, res) => { try { res.json(store.logs); } catch (e) { res.status(500).json({ error: e.message }); } });
-app.delete('/api/logs', (req, res) => { try { store.logs = []; saveStore(); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
-
-// ===== BACKUP / RESTORE =====
-app.get('/api/backup', (req, res) => {
-  try {
-    // Allow auth via query param (for download links) or header
-    const sid = req.query.session || req.headers['x-session'];
-    if (!isValidSession(sid)) return res.status(401).json({ error: 'Unauthorized' });
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename="isiam-store-backup-${new Date().toISOString().slice(0,10)}.json"`);
-    res.send(JSON.stringify(store, null, 2));
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/restore', (req, res) => {
-  try {
-    if (!req.body || !req.body.accounts) return res.status(400).json({ error: 'Invalid backup format' });
-    store = { ...DEFAULT_STORE, ...req.body, settings: { ...DEFAULT_STORE.settings, ...(req.body.settings || {}) } };
-    saveStore();
-    addLog('WARN', 'Store restored from backup');
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ===== BROADCAST (announcement to log channel) =====
-app.post('/api/broadcast', async (req, res) => {
-  try {
-    const { message } = req.body;
-    if (!message) return res.status(400).json({ error: 'Message required' });
-    let sent = 0, failed = 0;
-    if (client.isReady()) {
-      for (const c of store.customers) {
-        if (c.trust === 'Blacklisted') continue;
-        try {
-          const user = await client.users.fetch(c.discordId);
-          await user.send(`📢 **${store.settings.storeName} — إعلان / Announcement**\n\n${message}`);
-          sent++;
-        } catch (e) { failed++; }
-        // Discord rate limit safety
-        await new Promise(r => setTimeout(r, 800));
-      }
-    }
-    addLog('INFO', `Broadcast sent to ${sent} customers (${failed} failed)`);
-    res.json({ sent, failed });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ===== DISCORD CLIENT =====
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.DirectMessages
-  ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction]
-});
-
-client.on('ready', () => {
-  console.log(`[${STORE_NAME}] Bot online as ${client.user.tag}`);
-  // Try to set the bot's avatar to logo.png
-  try {
-    const logoPath = path.join(__dirname, 'logo.png');
-    if (fs.existsSync(logoPath) && !client.user.avatar) {
-      const avatarBuf = fs.readFileSync(logoPath);
-      client.user.setAvatar(avatarBuf).then(() => {
-        client.user.setActivity('isiam store', { type: 3 /* Watching */ });
-        console.log('[isiam store] Avatar + activity set');
-      }).catch(e => console.warn('Avatar set failed:', e.message));
-    } else {
-      client.user.setActivity('isiam store', { type: 3 });
-    }
-  } catch (e) {}
-  addLog('INFO', 'Bot connected to Discord as ' + client.user.tag);
-  sendLogToDiscord(`🟢 **${STORE_NAME}** — Bot Online`);
-});
-
-// ===== INTERACTION HANDLER =====
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton() && !interaction.isStringSelectMenu() && !interaction.isModalSubmit()) return;
-
-  try {
-    // ---- BUY BUTTON → Create Private Ticket ----
-    if (interaction.isButton() && interaction.customId.startsWith('buy_')) {
-      const accId = parseInt(interaction.customId.split('_')[1]);
-      const acc = store.accounts.find(a => a.id === accId);
-      if (!acc || acc.status !== 'available') {
-        return interaction.reply({ content: '❌ هذا المنتج لم يعد متوفرًا / This product is no longer available.', ephemeral: true });
-      }
-
-      const existing = store.tickets.find(t =>
-        t.userId === interaction.user.id && t.accountId === accId && t.status !== 'closed'
-      );
-      if (existing) {
-        const ch = client.channels.cache.get(existing.channelId);
-        if (ch) return interaction.reply({ content: `🎫 لديك تذكرة مفتوحة بالفعل لهذا المنتج: <#${existing.channelId}>`, ephemeral: true });
-      }
-
-      const categoryId = store.settings.ticketCategoryId;
-      if (!categoryId) return interaction.reply({ content: '❌ النظام غير جاهز حالياً / System not ready.', ephemeral: true });
-      const guild = interaction.guild;
-      if (!guild) return interaction.reply({ content: '❌ يعمل فقط داخل السيرفر / Works inside server only.', ephemeral: true });
-      const category = guild.channels.cache.get(categoryId);
-      if (!category || category.type !== ChannelType.GuildCategory) return interaction.reply({ content: '❌ خطأ في إعدادات التذاكر / Ticket misconfigured.', ephemeral: true });
-
-      acc.status = 'reserved';
-      saveStore();
-
-      const ticketChannel = await guild.channels.create({
-        name: `🎫-${interaction.user.username}-${accId}`,
-        type: ChannelType.GuildText,
-        parent: category,
-        permissionOverwrites: [
-          { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-          { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] }
-        ]
-      });
-
-      if (store.settings.ownerId) {
-        await ticketChannel.permissionOverwrites.create(store.settings.ownerId, {
-          ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true, ManageChannels: true
-        }).catch(() => {});
-      }
-      // Staff role access
-      if (Array.isArray(store.settings.staffRoleIds)) {
-        for (const rid of store.settings.staffRoleIds) {
-          if (rid) await ticketChannel.permissionOverwrites.create(rid, {
-            ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true
-          }).catch(() => {});
-        }
-      }
-
-      const ticketId = 'TKT-' + String(store.tickets.length + 1).padStart(4, '0');
-      const ticket = {
-        id: ticketId, userId: interaction.user.id, userName: interaction.user.username,
-        accountId: accId, accountTitle: acc.titleEn, amount: acc.price,
-        channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
-        status: 'open', createdAt: new Date().toISOString()
-      };
-      store.tickets.unshift(ticket);
-      saveStore();
-
-      // Payment method select
-      const pay = store.settings;
-      const options = [];
-      if (pay.stcPay && pay.stcPay.number) options.push({ label: 'STC Pay', value: 'stcpay', description: 'STC Pay: ' + pay.stcPay.number, emoji: '📱' });
-      if (pay.alrajhi && pay.alrajhi.iban) options.push({ label: 'AlRajhi Bank', value: 'alrajhi', description: 'تحويل بنكي الراجحي', emoji: '🏦' });
-      if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal Link', emoji: '💳' });
-      if (options.length === 0) options.push({ label: 'No payment methods', value: 'none', description: 'Contact admin' });
-
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId('paymethod_' + accId + '_' + ticketId)
-        .setPlaceholder('اختر طريقة الدفع / Choose payment method')
-        .addOptions(options);
-
-      // Coupon input button
-      const welcomeEmbed = new EmbedBuilder()
-        .setColor(store.settings.color || 0x9b59ff)
-        .setTitle('🛒 طلب شراء جديد / New Purchase Request')
-        .setDescription(
-          `**${store.settings.storeName}**\n\n` +
-          `👤 العميل / Customer: **${interaction.user.username}**\n` +
-          `📦 المنتج / Product: **${acc.titleEn}**\n` +
-          `💰 السعر / Price: \`${pay.currency}${acc.price.toFixed(2)}\`\n` +
-          `🎫 رقم التذكرة / Ticket: \`${ticketId}\`\n\n` +
-          (pay.welcomeAr || '') + '\n' + (pay.welcomeEn || '')
-        )
-        .setThumbnail('attachment://logo.png')
-        .addFields(
-          { name: '📋 الخطوات / Steps', value: '1️⃣ اختر طريقة الدفع\n2️⃣ حول المبلغ المطلوب\n3️⃣ ارفع صورة الإيصال هنا\n4️⃣ انتظر التأكيد واستلم الحساب', inline: false }
-        )
-        .setFooter({ text: store.settings.storeName + ' • ' + ticketId })
-        .setTimestamp();
-
-      const files = [];
-      try {
-        const logoPath = path.join(__dirname, 'logo.png');
-        if (fs.existsSync(logoPath)) files.push(new AttachmentBuilder(fs.readFileSync(logoPath), { name: 'logo.png' }));
-      } catch (e) {}
-
-      const closeRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('close_ticket_' + ticketId).setLabel('إغلاق / Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
-        new ButtonBuilder().setCustomId('coupon_' + ticketId).setLabel('كود خصم / Coupon').setStyle(ButtonStyle.Secondary).setEmoji('🎁')
-      );
-
-      await ticketChannel.send({
-        content: '👤 <@' + interaction.user.id + '> | 🎫 تذكرة شراء خاصة / Private Purchase Ticket',
-        embeds: [welcomeEmbed],
-        components: [new ActionRowBuilder().addComponents(selectMenu), closeRow],
-        files
-      });
-
-      await interaction.reply({ content: '🎫 تم إنشاء تذكرة خاصة بك: <#' + ticketChannel.id + '>', ephemeral: true });
-      addLog('INFO', `Ticket ${ticketId} created for ${interaction.user.username} → ${acc.titleEn}`);
-      sendLogToDiscord(`🎫 New ticket \`${ticketId}\` by **${interaction.user.username}** for **${acc.titleEn}** ($${acc.price})`);
-      return;
-    }
-
-    // ---- BUY POOL BUTTON (Auto-Delivery) ----
-    if (interaction.isButton() && interaction.customId.startsWith('buypool_')) {
-      const poolId = parseInt(interaction.customId.split('_')[1]);
-      const pool = store.pools.find(p => p.id === poolId);
-      if (!pool || !pool.stock || pool.stock.length === 0) {
-        return interaction.reply({ content: '❌ هذا المنتج غير متوفر حالياً / Out of stock.', ephemeral: true });
-      }
-      const existing = store.tickets.find(t =>
-        t.userId === interaction.user.id && t.poolId === poolId && t.status !== 'closed'
-      );
-      if (existing) {
-        const ch = client.channels.cache.get(existing.channelId);
-        if (ch) return interaction.reply({ content: `🎫 لديك تذكرة مفتوحة: <#${existing.channelId}>`, ephemeral: true });
-      }
-      const categoryId = store.settings.ticketCategoryId;
-      if (!categoryId) return interaction.reply({ content: '❌ النظام غير جاهز / System not ready.', ephemeral: true });
-      const guild = interaction.guild;
-      if (!guild) return interaction.reply({ content: '❌ داخل السيرفر فقط / Inside server only.', ephemeral: true });
-      const category = guild.channels.cache.get(categoryId);
-      if (!category || category.type !== ChannelType.GuildCategory) return interaction.reply({ content: '❌ خطأ / Misconfigured.', ephemeral: true });
-
-      const ticketChannel = await guild.channels.create({
-        name: `⚡-${interaction.user.username}-pool${poolId}`,
-        type: ChannelType.GuildText,
-        parent: category,
-        permissionOverwrites: [
-          { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-          { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] }
-        ]
-      });
-      if (store.settings.ownerId) {
-        await ticketChannel.permissionOverwrites.create(store.settings.ownerId, {
-          ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true, ManageChannels: true
-        }).catch(() => {});
-      }
-
-      const ticketId = 'TKT-' + String(store.tickets.length + 1).padStart(4, '0');
-      const ticket = {
-        id: ticketId, userId: interaction.user.id, userName: interaction.user.username,
-        accountId: null, poolId: poolId, accountTitle: pool.name + ' (Auto-Delivery)', amount: pool.price,
-        channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
-        status: 'open', createdAt: new Date().toISOString()
-      };
-      store.tickets.unshift(ticket);
-      saveStore();
-
-      const pay = store.settings;
-      const options = [];
-      if (pay.stcPay && pay.stcPay.number) options.push({ label: 'STC Pay', value: 'stcpay', description: 'STC Pay: ' + pay.stcPay.number, emoji: '📱' });
-      if (pay.alrajhi && pay.alrajhi.iban) options.push({ label: 'AlRajhi Bank', value: 'alrajhi', description: 'الراجحي', emoji: '🏦' });
-      if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal Link', emoji: '💳' });
-      if (options.length === 0) options.push({ label: 'No payment methods', value: 'none', description: 'Contact admin' });
-
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId('paymethodpool_' + poolId + '_' + ticketId)
-        .setPlaceholder('اختر طريقة الدفع / Choose payment')
-        .addOptions(options);
-
-      const embed = new EmbedBuilder()
-        .setColor(store.settings.color || 0x9b59ff)
-        .setTitle('⚡ طلب شراء فوري / Instant Purchase Request')
-        .setDescription(
-          `**${store.settings.storeName}**\n\n` +
-          `👤 العميل: **${interaction.user.username}**\n` +
-          `📦 المنتج: **${pool.name}** (تسليم فوري / Auto-Delivery)\n` +
-          `💰 السعر: \`${pay.currency}${pool.price.toFixed(2)}\`\n` +
-          `🎫 التذكرة: \`${ticketId}\`\n\n` +
-          `بعد تأكيد الدفع، سيتم تسليم الحساب فوراً وإغلاق التذكرة تلقائياً.\n` +
-          `After payment confirmation, account is delivered instantly & ticket auto-closes.`
-        )
-        .setFooter({ text: store.settings.storeName + ' • ' + ticketId })
-        .setTimestamp();
-
-      const closeRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('close_ticket_' + ticketId).setLabel('إغلاق / Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
-        new ButtonBuilder().setCustomId('coupon_' + ticketId).setLabel('كود خصم / Coupon').setStyle(ButtonStyle.Secondary).setEmoji('🎁')
-      );
-
-      await ticketChannel.send({
-        content: '👤 <@' + interaction.user.id + '> | ⚡ تذكرة شراء فوري / Instant Purchase Ticket',
-        embeds: [embed],
-        components: [new ActionRowBuilder().addComponents(selectMenu), closeRow]
-      });
-
-      await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true });
-      addLog('INFO', `Pool ticket ${ticketId} for ${interaction.user.username} → ${pool.name}`);
-      sendLogToDiscord(`⚡ Pool ticket \`${ticketId}\` by **${interaction.user.username}** for **${pool.name}** ($${pool.price})`);
-      return;
-    }
-
-    // ---- BUY DIGITAL BUTTON (instant code delivery) ----
-    if (interaction.isButton() && interaction.customId.startsWith('buydig_')) {
-      const digId = parseInt(interaction.customId.split('_')[1]);
-      const dig = store.digitalProducts.find(d => d.id === digId);
-      if (!dig || !dig.stock || dig.stock.length === 0) {
-        return interaction.reply({ content: '❌ نفدت الكمية / Out of stock.', ephemeral: true });
-      }
-      const existing = store.tickets.find(t =>
-        t.userId === interaction.user.id && t.digitalProductId === digId && t.status !== 'closed'
-      );
-      if (existing) {
-        const ch = client.channels.cache.get(existing.channelId);
-        if (ch) return interaction.reply({ content: `🎫 لديك تذكرة مفتوحة: <#${existing.channelId}>`, ephemeral: true });
-      }
-      const categoryId = store.settings.ticketCategoryId;
-      if (!categoryId) return interaction.reply({ content: '❌ النظام غير جاهز / System not ready.', ephemeral: true });
-      const guild = interaction.guild;
-      if (!guild) return interaction.reply({ content: '❌ داخل السيرفر فقط / Inside server only.', ephemeral: true });
-      const category = guild.channels.cache.get(categoryId);
-      if (!category || category.type !== ChannelType.GuildCategory) return interaction.reply({ content: '❌ خطأ / Misconfigured.', ephemeral: true });
-
-      const ticketChannel = await guild.channels.create({
-        name: `🎫-${interaction.user.username}-dig${digId}`,
-        type: ChannelType.GuildText,
-        parent: category,
-        permissionOverwrites: [
-          { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-          { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] }
-        ]
-      });
-      if (store.settings.ownerId) {
-        await ticketChannel.permissionOverwrites.create(store.settings.ownerId, {
-          ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true, ManageChannels: true
-        }).catch(() => {});
-      }
-
-      const ticketId = 'TKT-' + String(store.tickets.length + 1).padStart(4, '0');
-      const ticket = {
-        id: ticketId, userId: interaction.user.id, userName: interaction.user.username,
-        accountId: null, poolId: null, digitalProductId: digId, boostingServiceId: null,
-        accountTitle: dig.titleEn + ' (Digital)', amount: dig.price,
-        channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
-        status: 'open', createdAt: new Date().toISOString()
-      };
-      store.tickets.unshift(ticket);
-      saveStore();
-
-      const pay = store.settings;
-      const options = [];
-      if (pay.stcPay && pay.stcPay.number) options.push({ label: 'STC Pay', value: 'stcpay', description: 'STC Pay: ' + pay.stcPay.number, emoji: '📱' });
-      if (pay.alrajhi && pay.alrajhi.iban) options.push({ label: 'AlRajhi Bank', value: 'alrajhi', description: 'الراجحي', emoji: '🏦' });
-      if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal Link', emoji: '💳' });
-      if (options.length === 0) options.push({ label: 'No payment methods', value: 'none', description: 'Contact admin' });
-
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId('paymethoddig_' + digId + '_' + ticketId)
-        .setPlaceholder('اختر طريقة الدفع / Choose payment')
-        .addOptions(options);
-
-      const embed = new EmbedBuilder()
-        .setColor(store.settings.color || 0x9b59ff)
-        .setTitle('🎫 طلب منتج رقمي / Digital Purchase Request')
-        .setDescription(
-          `**${store.settings.storeName}**\n\n` +
-          `👤 العميل: **${interaction.user.username}**\n` +
-          `📦 المنتج: **${dig.titleEn}** (${dig.platform})\n` +
-          `💰 السعر: \`${pay.currency}${dig.price.toFixed(2)}\`\n` +
-          `🎫 التذكرة: \`${ticketId}\`\n\n` +
-          `بعد تأكيد الدفع، سيتم تسليم الكود فوراً وإغلاق التذكرة.\n` +
-          `After payment confirmation, code is delivered instantly & ticket auto-closes.`
-        )
-        .setFooter({ text: store.settings.storeName + ' • ' + ticketId })
-        .setTimestamp();
-
-      const closeRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('close_ticket_' + ticketId).setLabel('إغلاق / Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
-        new ButtonBuilder().setCustomId('coupon_' + ticketId).setLabel('كود خصم / Coupon').setStyle(ButtonStyle.Secondary).setEmoji('🎁')
-      );
-
-      await ticketChannel.send({
-        content: '👤 <@' + interaction.user.id + '> | 🎫 تذكرة منتج رقمي / Digital Purchase Ticket',
-        embeds: [embed],
-        components: [new ActionRowBuilder().addComponents(selectMenu), closeRow]
-      });
-
-      await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true });
-      addLog('INFO', `Digital ticket ${ticketId} for ${interaction.user.username} → ${dig.titleEn}`);
-      sendLogToDiscord(`🎫 Digital ticket \`${ticketId}\` by **${interaction.user.username}** for **${dig.titleEn}** ($${dig.price})`);
-      return;
-    }
-
-    // ---- ORDER BOOST BUTTON → customer choice flow ----
-    if (interaction.isButton() && interaction.customId.startsWith('orderboost_')) {
-      const boostId = parseInt(interaction.customId.split('_')[1]);
-      const boost = store.boostingServices.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ الخدمة غير موجودة / Service missing.', ephemeral: true });
-
-      const existing = store.tickets.find(t => t.userId === interaction.user.id && t.boostingServiceId === boostId && t.status !== 'closed');
-      if (existing) {
-        const ch = client.channels.cache.get(existing.channelId);
-        if (ch) return interaction.reply({ content: `🎫 لديك تذكرة مفتوحة: <#${existing.channelId}>`, ephemeral: true });
-      }
-
-      const brandColor = store.settings.color || 0x9b59ff;
-      const cur = store.settings.currency;
-
-      // ===== RANK BOOST with customer choice (uses expanded ranks with emojis) =====
-      if (boost.serviceType === 'rank' && boost.rankList && boost.rankList.length >= 2 && boost.pricePerRank > 0) {
-        const expanded = getExpandedRanks(boost);
-        // Discord select menu max 25 options
-        const options = expanded.slice(0, 25).map(r => ({
-          label: r.label.slice(0, 100), value: String(r.globalIdx),
-          description: 'Select if your current rank is ' + r.label,
-          emoji: r.emoji || undefined
-        }));
-        const select = new StringSelectMenuBuilder().setCustomId('bstrf_' + boostId).setPlaceholder('اختر رتبتك الحالية / Select your CURRENT rank').addOptions(options);
-        const rankSummary = boost.rankList.map(r => (r.emoji ? r.emoji + ' ' : '') + '`' + r.name + '`').join(' → ');
-        const embed = new EmbedBuilder().setColor(brandColor).setTitle('🚀 ' + boost.titleEn).setDescription(`**Choose your current rank to start.**\n📋 Available ranks: ${rankSummary}\n📊 ${(boost.rankTiers||3)} tiers each (I, II, III)\n💰 Price: \`${cur}${boost.pricePerRank} per tier\``).setFooter({ text: store.settings.storeName + ' • Step 1 of 2' });
-        return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
-      }
-      // ===== PRESTIGE with customer choice =====
-      if (boost.serviceType === 'prestige' && boost.maxPrestige > 0 && boost.pricePerPrestige > 0) {
-        const pem = boost.prestigeEmoji || '🎖️';
-        const options = [];
-        for (let lvl = 1; lvl <= Math.min(boost.maxPrestige, 25); lvl++) {
-          options.push({ label: 'Prestige ' + lvl, value: String(lvl), description: cur + (boost.pricePerPrestige * lvl).toFixed(2), emoji: pem });
-        }
-        const select = new StringSelectMenuBuilder().setCustomId('bstp_' + boostId).setPlaceholder('اختر مستوى البريستيج / Select target prestige').addOptions(options);
-        const embed = new EmbedBuilder().setColor(brandColor).setTitle('🚀 ' + boost.titleEn).setDescription(`**Choose your target prestige level.**\n💰 Price: \`${cur}${boost.pricePerPrestige} × level\`\n📊 Available: ${pem} 1 to ${boost.maxPrestige}`).setFooter({ text: store.settings.storeName });
-        return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
-      }
-      // ===== GUN LEVEL with customer choice (2-step: category → gun → modal) =====
-      if (boost.serviceType === 'gun_level' && boost.gunList && boost.gunList.length > 0) {
-        const categories = getGunCategories(boost);
-        // If multiple categories → show category select first
-        if (categories.length > 1) {
-          const catOptions = categories.slice(0, 25).map((c, i) => ({
-            label: c.name.slice(0, 100),
-            value: String(i),
-            description: c.guns.length + ' guns available',
-            emoji: c.emoji || undefined
-          }));
-          const select = new StringSelectMenuBuilder()
-            .setCustomId('bstcat_' + boostId)
-            .setPlaceholder('اختر فئة السلاح / Select gun category')
-            .addOptions(catOptions);
-          const embed = new EmbedBuilder()
-            .setColor(brandColor)
-            .setTitle('🚀 ' + boost.titleEn)
-            .setDescription(
-              `**اختر فئة السلاح أولاً / Choose a gun category first.**\n\n` +
-              `📋 الفئات المتاحة: ${categories.length}\n` +
-              `🔫 إجمالي الأسلحة: ${boost.gunList.length}\n` +
-              `💰 السعر: \`$${(boost.gunList[0]?.pricePerLevel > 0 ? boost.gunList[0].pricePerLevel : 13)} لكل سلاح للمستوى الأقصى\`\n` +
-              `📊 الحد الأقصى للمستوى: ${boost.maxGunLevel}`
-            )
-            .setFooter({ text: store.settings.storeName + ' • الخطوة 1 من 3' });
-          return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
-        }
-        // Single category (or flat list) → go straight to gun select
-        return await showGunSelectForBoost(interaction, boost, 0);
-      }
-
-      // ===== FALLBACK: no customer-choice config → create ticket directly with fixed price =====
-      return await createBoostingTicket(interaction, boost, {}, boost.price);
-    }
-
-    // ---- ORDER CAMO BUTTON → customer choice flow (pick gun → multi-select camos → confirm) ----
-    if (interaction.isButton() && interaction.customId.startsWith('ordercamo_')) {
-      const camoId = parseInt(interaction.customId.split('_')[1]);
-      const camo = store.camoServices.find(s => s.id === camoId);
-      if (!camo) return interaction.reply({ content: '❌ الخدمة غير موجودة / Service missing.', ephemeral: true });
-      const existing = store.tickets.find(t => t.userId === interaction.user.id && t.camoServiceId === camoId && t.status !== 'closed');
-      if (existing) {
-        const ch = client.channels.cache.get(existing.channelId);
-        if (ch) return interaction.reply({ content: `🎫 لديك تذكرة مفتوحة: <#${existing.channelId}>`, ephemeral: true });
-      }
-      const brandColor = store.settings.color || 0x9b59ff;
-      const cur = store.settings.currency;
-      // If gunList exists → customer picks gun first
-      if (camo.gunList && camo.gunList.length > 0) {
-        const options = camo.gunList.slice(0, 25).map((g, i) => ({ label: g.name.slice(0, 100), value: String(i), description: 'Select this gun', emoji: g.emoji || undefined }));
-        const select = new StringSelectMenuBuilder().setCustomId('camogun_' + camoId).setPlaceholder('اختر السلاح / Select your gun').addOptions(options);
-        const embed = new EmbedBuilder().setColor(brandColor).setTitle('🎨 ' + camo.titleEn).setDescription(`**Choose which gun to unlock camos for.**\n💰 Price: \`${cur}${camo.pricePerCamo} per camo\``).setFooter({ text: store.settings.storeName + ' • Step 1 of 2' });
-        return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
-      }
-      // No gunList → go straight to camo multi-select
-      return await showCamoMultiSelect(interaction, camo, null);
-    }
-
-    // ---- CAMO: customer selected gun → show camo multi-select ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('camogun_')) {
-      const camoId = parseInt(interaction.customId.split('_')[1]);
-      const camo = store.camoServices.find(s => s.id === camoId);
-      if (!camo) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const gunIdx = parseInt(interaction.values[0]);
-      const gun = camo.gunList[gunIdx];
-      if (!gun) return interaction.reply({ content: '❌ Invalid gun.', ephemeral: true });
-      await interaction.deferUpdate();
-      return await showCamoMultiSelect(interaction, camo, gunIdx);
-    }
-
-    // ---- CAMO: customer selected camos → show confirm with total price ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('camocamos_')) {
-      const parts = interaction.customId.split('_');
-      const camoId = parseInt(parts[1]);
-      const gunIdx = parts[2] === 'null' ? null : parseInt(parts[2]);
-      const camo = store.camoServices.find(s => s.id === camoId);
-      if (!camo) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const selectedIndices = interaction.values.map(v => parseInt(v));
-      const selectedCamos = selectedIndices.map(i => camo.camoList[i]).filter(Boolean);
-      if (selectedCamos.length === 0) return interaction.reply({ content: '❌ اختر كامو واحد على الأقل / Select at least 1 camo.', ephemeral: true });
-      const totalPrice = selectedCamos.reduce((sum, c) => {
-        const p = (c.price !== null && c.price !== undefined) ? c.price : camo.pricePerCamo;
-        return sum + p;
-      }, 0);
-      const cur = store.settings.currency;
-      const gunName = gunIdx !== null && camo.gunList[gunIdx] ? camo.gunList[gunIdx].name : 'Any gun';
-      const camosList = selectedCamos.map(c => (c.emoji ? (typeof c.emoji === 'object' ? '<:'+c.emoji.name+':'+c.emoji.id+'>' : c.emoji) + ' ' : '') + c.name).join(', ');
-      const embed = new EmbedBuilder().setColor(store.settings.color || 0x9b59ff).setTitle('✅ Confirm Your Camo Unlock').setDescription(`**${camo.titleEn}**\n🔫 Gun: \`${gunName}\`\n🎨 Camos: ${camosList}\n📊 Count: ${selectedCamos.length}\n💰 Total Price: \`${cur}${totalPrice.toFixed(2)}\`\n⏱️ ETA: \`${camo.eta}\`\n\nClick **Confirm** to create a ticket.`).setFooter({ text: store.settings.storeName });
-      // Encode selected camo indices in the button customId (comma-separated)
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('camocamoc_' + camoId + '_' + gunIdx + '_' + selectedIndices.join(',')).setLabel('✅ تأكيد / Confirm').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('bstcancel').setLabel('❌ إلغاء / Cancel').setStyle(ButtonStyle.Danger)
-      );
-      return interaction.update({ embeds: [embed], components: [row] });
-    }
-
-    // ---- CAMO: confirm → create ticket ----
-    if (interaction.isButton() && interaction.customId.startsWith('camocamoc_')) {
-      const parts = interaction.customId.split('_');
-      const camoId = parseInt(parts[1]);
-      const gunIdx = parts[2] === 'null' ? null : parseInt(parts[2]);
-      const selectedIndices = parts[3].split(',').map(s => parseInt(s)).filter(n => !isNaN(n));
-      const camo = store.camoServices.find(s => s.id === camoId);
-      if (!camo) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const selectedCamos = selectedIndices.map(i => camo.camoList[i]).filter(Boolean);
-      const totalPrice = selectedCamos.reduce((sum, c) => {
-        const p = (c.price !== null && c.price !== undefined) ? c.price : camo.pricePerCamo;
-        return sum + p;
-      }, 0);
-      await interaction.deferUpdate();
-      return await createCamoTicket(interaction, camo, gunIdx, selectedCamos, totalPrice);
-    }
-
-    // ---- RANK: customer selected CURRENT rank → show TARGET rank select (uses expanded ranks) ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('bstrf_')) {
-      const boostId = parseInt(interaction.customId.split('_')[1]);
-      const boost = store.boostingServices.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const expanded = getExpandedRanks(boost);
-      const fromIdx = parseInt(interaction.values[0]);
-      const fromRank = expanded[fromIdx];
-      if (!fromRank) return interaction.reply({ content: '❌ Invalid rank.', ephemeral: true });
-      // Target options = ranks above current
-      const targetOptions = [];
-      for (let i = fromIdx + 1; i < expanded.length; i++) {
-        const tiers = i - fromIdx;
-        const price = boost.pricePerRank * tiers;
-        targetOptions.push({ label: (fromRank.emoji ? fromRank.emoji + ' ' : '') + fromRank.label + ' → ' + (expanded[i].emoji ? expanded[i].emoji + ' ' : '') + expanded[i].label, value: String(i), description: store.settings.currency + price.toFixed(2) + ' (' + tiers + ' tier' + (tiers>1?'s':'') + ')', emoji: expanded[i].emoji || undefined });
-      }
-      if (targetOptions.length === 0) return interaction.reply({ content: '❌ لا توجد رتب أعلى من رتبتك الحالية / No higher ranks available.', ephemeral: true });
-      const select = new StringSelectMenuBuilder().setCustomId('bstrt_' + boostId + '_' + fromIdx).setPlaceholder('اختر الرتبة المستهدفة / Select TARGET rank').addOptions(targetOptions.slice(0, 25));
-      const embed = new EmbedBuilder().setColor(store.settings.color || 0x9b59ff).setTitle('📈 Current: ' + (fromRank.emoji ? fromRank.emoji + ' ' : '') + fromRank.label).setDescription('**Now select your target rank.**').setFooter({ text: store.settings.storeName + ' • Step 2 of 2' });
-      return interaction.update({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] });
-    }
-
-    // ---- RANK: customer selected TARGET rank → show confirm with price ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('bstrt_')) {
-      const parts = interaction.customId.split('_');
-      const boostId = parseInt(parts[1]);
-      const fromIdx = parseInt(parts[2]);
-      const toIdx = parseInt(interaction.values[0]);
-      const boost = store.boostingServices.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const expanded = getExpandedRanks(boost);
-      const fromRank = expanded[fromIdx];
-      const toRank = expanded[toIdx];
-      if (!fromRank || !toRank) return interaction.reply({ content: '❌ Invalid ranks.', ephemeral: true });
-      const tiers = toIdx - fromIdx;
-      const price = boost.pricePerRank * tiers;
-      const cur = store.settings.currency;
-      const fromLabel = (fromRank.emoji ? fromRank.emoji + ' ' : '') + fromRank.label;
-      const toLabel = (toRank.emoji ? toRank.emoji + ' ' : '') + toRank.label;
-      const embed = new EmbedBuilder().setColor(store.settings.color || 0x9b59ff).setTitle('✅ Confirm Your Boost').setDescription(`**${boost.titleEn}**\n📈 Rank: \`${fromLabel}\` → \`${toLabel}\`\n📊 Tiers: ${tiers}\n💰 Price: \`${cur}${price.toFixed(2)}\`\n⏱️ ETA: \`${boost.eta}\`\n\nClick **Confirm** to create a ticket.`).setFooter({ text: store.settings.storeName });
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('bstrc_' + boostId + '_' + fromIdx + '_' + toIdx).setLabel('✅ تأكيد / Confirm').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('bstcancel').setLabel('❌ إلغاء / Cancel').setStyle(ButtonStyle.Danger)
-      );
-      return interaction.update({ embeds: [embed], components: [row] });
-    }
-
-    // ---- RANK: confirm → create ticket ----
-    if (interaction.isButton() && interaction.customId.startsWith('bstrc_')) {
-      const parts = interaction.customId.split('_');
-      const boostId = parseInt(parts[1]);
-      const fromIdx = parseInt(parts[2]);
-      const toIdx = parseInt(parts[3]);
-      const boost = store.boostingServices.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const expanded = getExpandedRanks(boost);
-      const fromRank = expanded[fromIdx];
-      const toRank = expanded[toIdx];
-      if (!fromRank || !toRank) return interaction.reply({ content: '❌ Invalid ranks.', ephemeral: true });
-      const tiers = toIdx - fromIdx;
-      const price = boost.pricePerRank * tiers;
-      const fromLabel = (fromRank.emoji ? fromRank.emoji + ' ' : '') + fromRank.label;
-      const toLabel = (toRank.emoji ? toRank.emoji + ' ' : '') + toRank.label;
-      await interaction.deferUpdate();
-      return await createBoostingTicket(interaction, boost, { type: 'rank', fromRank: fromLabel, toRank: toLabel, tiers }, price);
-    }
-
-    // ---- PRESTIGE: customer selected target level → show confirm ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('bstp_')) {
-      const boostId = parseInt(interaction.customId.split('_')[1]);
-      const boost = store.boostingServices.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const level = parseInt(interaction.values[0]);
-      const price = boost.pricePerPrestige * level;
-      const cur = store.settings.currency;
-      const pem = boost.prestigeEmoji || '🎖️';
-      const embed = new EmbedBuilder().setColor(store.settings.color || 0x9b59ff).setTitle('✅ Confirm Your Boost').setDescription(`**${boost.titleEn}**\n${pem} Target Prestige: \`${level}\`\n💰 Price: \`${cur}${price.toFixed(2)}\`\n⏱️ ETA: \`${boost.eta}\`\n\nClick **Confirm** to create a ticket.`).setFooter({ text: store.settings.storeName });
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('bstpc_' + boostId + '_' + level).setLabel('✅ تأكيد / Confirm').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('bstcancel').setLabel('❌ إلغاء / Cancel').setStyle(ButtonStyle.Danger)
-      );
-      return interaction.update({ embeds: [embed], components: [row] });
-    }
-
-    // ---- PRESTIGE: confirm → create ticket ----
-    if (interaction.isButton() && interaction.customId.startsWith('bstpc_')) {
-      const parts = interaction.customId.split('_');
-      const boostId = parseInt(parts[1]);
-      const level = parseInt(parts[2]);
-      const boost = store.boostingServices.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const price = boost.pricePerPrestige * level;
-      await interaction.deferUpdate();
-      return await createBoostingTicket(interaction, boost, { type: 'prestige', targetLevel: level }, price);
-    }
-
-    // ---- GUN: customer selected CATEGORY → show gun select from that category ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('bstcat_')) {
-      const boostId = parseInt(interaction.customId.split('_')[1]);
-      const boost = store.boostingServices.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const catIdx = parseInt(interaction.values[0]);
-      // Use update() to replace the category select with the gun select (no defer needed)
-      return await showGunSelectForBoost(interaction, boost, catIdx);
-    }
-
-    // ---- GUN: customer selected gun → show confirm with $13 flat price ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('bstg_')) {
-      const parts = interaction.customId.split('_');
-      const boostId = parseInt(parts[1]);
-      const catIdx = parseInt(parts[2] || '0');
-      const boost = store.boostingServices.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const categories = getGunCategories(boost);
-      const cat = categories[catIdx] || categories[0];
-      if (!cat) return interaction.reply({ content: '❌ Category missing.', ephemeral: true });
-      const gunLocalIdx = parseInt(interaction.values[0]);
-      const gun = cat.guns[gunLocalIdx];
-      if (!gun) return interaction.reply({ content: '❌ Gun missing.', ephemeral: true });
-      // Find global gun index in flat gunList
-      const globalGunIdx = boost.gunList.findIndex(g => g.name === gun.name && g.emoji === gun.emoji);
-      const gunEmoji = gun.emoji ? (typeof gun.emoji === 'object' ? '<:'+gun.emoji.name+':'+gun.emoji.id+'>' : gun.emoji) + ' ' : '🔫 ';
-      const gunLabel = gunEmoji + gun.name;
-      // $13 flat per gun to max out — no level entry needed
-      const price = gun.pricePerLevel > 0 ? gun.pricePerLevel : 13;
-      const cur = store.settings.currency;
-      const embed = new EmbedBuilder()
-        .setColor(store.settings.color || 0x9b59ff)
-        .setTitle('✅ تأكيد الطلب')
-        .setDescription(
-          `**${boost.titleEn}**\n\n` +
-          `🔫 السلاح: \`${gunLabel}\`\n` +
-          `📊 الخدمة: رفع السلاح للمستوى الأقصى\n` +
-          `💰 السعر: \`${cur}${price.toFixed(2)}\`\n` +
-          `⏱️ المدة: \`${boost.eta}\`\n\n` +
-          `اضغط **تأكيد** لإنشاء التذكرة`
-        )
-        .setFooter({ text: store.settings.storeName })
-        .setTimestamp();
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('bstgunconfirm_' + boostId + '_' + globalGunIdx + '_' + price).setLabel('✅ تأكيد').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('bstcancel').setLabel('❌ إلغاء').setStyle(ButtonStyle.Danger)
-      );
-      return interaction.update({ embeds: [embed], components: [row] });
-    }
-
-    // ---- GUN: confirm → create ticket with flat $13 price ----
-    if (interaction.isButton() && interaction.customId.startsWith('bstgunconfirm_')) {
-      const parts = interaction.customId.split('_');
-      const boostId = parseInt(parts[1]);
-      const gunIdx = parseInt(parts[2]);
-      const price = parseFloat(parts[3]) || 13;
-      const boost = store.boostingServices.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const gun = boost.gunList[gunIdx];
-      if (!gun) return interaction.reply({ content: '❌ Gun missing.', ephemeral: true });
-      const gunLabel = (gun.emoji ? (typeof gun.emoji === 'object' ? '<:'+gun.emoji.name+':'+gun.emoji.id+'>' : gun.emoji) + ' ' : '') + gun.name;
-      await interaction.deferUpdate();
-      return await createBoostingTicket(interaction, boost, { type: 'gun_level', gunName: gunLabel, fromLevel: 'current', toLevel: 'MAX', levels: 'MAX' }, price);
-    }
-
-    // ---- Cancel button for boost choice flow ----
-    if (interaction.isButton() && interaction.customId === 'bstcancel') {
-      return interaction.update({ content: '❌ تم الإلغاء / Cancelled.', embeds: [], components: [] });
-    }
-
-    // ---- PAYMENT METHOD SELECT (account ticket) ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('paymethod_') && !interaction.customId.startsWith('paymethodpool_') && !interaction.customId.startsWith('paymethoddig_') && !interaction.customId.startsWith('paymethodboost_') && !interaction.customId.startsWith('paymethodcamo_')) {
-      const parts = interaction.customId.split('_');
-      const accId = parseInt(parts[1]);
-      const ticketId = parts.slice(2).join('_');
-      const acc = store.accounts.find(a => a.id === accId);
-      if (!acc) return interaction.reply({ content: '❌ المنتج غير موجود / Product missing.', ephemeral: true });
-      const ticket = store.tickets.find(t => t.id === ticketId);
-      if (!ticket) return interaction.reply({ content: '❌ التذكرة غير موجودة / Ticket missing.', ephemeral: true });
-
-      const method = interaction.values[0];
-      const payId = createPaymentRequest(interaction, acc.id, acc.titleEn, acc.price, method, ticketId, null, null, null, null);
-      const pay = store.settings;
-      let textInfo = '';
-      if (method === 'stcpay') textInfo = `📱 **STC Pay**\nالرقم: \`${pay.stcPay.number}\`\nالاسم: *${pay.stcPay.name || '-'}*`;
-      if (method === 'alrajhi') textInfo = `🏦 **AlRajhi Bank**\nIBAN: \`${pay.alrajhi.iban}\`\nالاسم: *${pay.alrajhi.name || '-'}*`;
-      if (method === 'paypal') textInfo = `💳 **PayPal**\nرابط: ${pay.paypal.email}`;
-
-      const payEmbed = new EmbedBuilder()
-        .setColor(0xf0b232)
-        .setTitle('💳 بيانات الدفع / Payment Instructions')
-        .setDescription(
-          `**المنتج:** ${acc.titleEn}\n` +
-          `**المبلغ:** \`${pay.currency}${acc.price.toFixed(2)}\`\n` +
-          `**رقم العملية:** \`${payId}\`\n\n` +
-          textInfo + '\n\n' +
-          '⚠️ **الخطوة التالية:**\nحوّل المبلغ ثم ارفع صورة الإيصال **هنا في التذكرة**.\nTransfer the amount then upload the receipt screenshot here.'
-        )
-        .setFooter({ text: store.settings.storeName + ' • Awaiting payment proof' })
-        .setTimestamp();
-
-      await interaction.reply({ embeds: [payEmbed] });
-      addLog('INFO', `${interaction.user.username} selected ${method.toUpperCase()} for ${payId}`);
-      return;
-    }
-
-    // ---- PAYMENT METHOD SELECT (pool ticket) ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('paymethodpool_')) {
-      const parts = interaction.customId.split('_');
-      const poolId = parseInt(parts[1]);
-      const ticketId = parts.slice(2).join('_');
-      const pool = store.pools.find(p => p.id === poolId);
-      if (!pool) return interaction.reply({ content: '❌ Pool missing.', ephemeral: true });
-      const ticket = store.tickets.find(t => t.id === ticketId);
-      if (!ticket) return interaction.reply({ content: '❌ Ticket missing.', ephemeral: true });
-
-      const method = interaction.values[0];
-      const payId = createPaymentRequest(interaction, null, pool.name + ' (Auto-Delivery)', pool.price, method, ticketId, poolId, null, null, null);
-      const pay = store.settings;
-      let textInfo = '';
-      if (method === 'stcpay') textInfo = `📱 **STC Pay**\nالرقم: \`${pay.stcPay.number}\`\nالاسم: *${pay.stcPay.name || '-'}*`;
-      if (method === 'alrajhi') textInfo = `🏦 **AlRajhi Bank**\nIBAN: \`${pay.alrajhi.iban}\`\nالاسم: *${pay.alrajhi.name || '-'}*`;
-      if (method === 'paypal') textInfo = `💳 **PayPal**\nرابط: ${pay.paypal.email}`;
-
-      const payEmbed = new EmbedBuilder()
-        .setColor(0xf0b232)
-        .setTitle('💳 بيانات الدفع / Payment Instructions')
-        .setDescription(
-          `**المنتج:** ${pool.name} (Auto-Delivery)\n` +
-          `**المبلغ:** \`${pay.currency}${pool.price.toFixed(2)}\`\n` +
-          `**رقم العملية:** \`${payId}\`\n\n` +
-          textInfo + '\n\n' +
-          '⚠️ حوّل المبلغ ثم ارفع صورة الإيصال. التسليم فوري بعد التأكيد.\nTransfer the amount then upload the receipt. Instant delivery after confirmation.'
-        )
-        .setFooter({ text: store.settings.storeName + ' • Awaiting payment proof' })
-        .setTimestamp();
-
-      await interaction.reply({ embeds: [payEmbed] });
-      addLog('INFO', `${interaction.user.username} selected ${method.toUpperCase()} for ${payId} (pool)`);
-      return;
-    }
-
-    // ---- PAYMENT METHOD SELECT (digital ticket) ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('paymethoddig_')) {
-      const parts = interaction.customId.split('_');
-      const digId = parseInt(parts[1]);
-      const ticketId = parts.slice(2).join('_');
-      const dig = store.digitalProducts.find(d => d.id === digId);
-      if (!dig) return interaction.reply({ content: '❌ Digital product missing.', ephemeral: true });
-      const ticket = store.tickets.find(t => t.id === ticketId);
-      if (!ticket) return interaction.reply({ content: '❌ Ticket missing.', ephemeral: true });
-
-      const method = interaction.values[0];
-      // Use createPaymentRequest with digitalProductId via 8th arg
-      const payId = createPaymentRequest(interaction, null, dig.titleEn + ' (Digital)', dig.price, method, ticketId, null, digId, null, null);
-      const pay = store.settings;
-      let textInfo = '';
-      if (method === 'stcpay') textInfo = `📱 **STC Pay**\nالرقم: \`${pay.stcPay.number}\`\nالاسم: *${pay.stcPay.name || '-'}*`;
-      if (method === 'alrajhi') textInfo = `🏦 **AlRajhi Bank**\nIBAN: \`${pay.alrajhi.iban}\`\nالاسم: *${pay.alrajhi.name || '-'}*`;
-      if (method === 'paypal') textInfo = `💳 **PayPal**\nرابط: ${pay.paypal.email}`;
-
-      const payEmbed = new EmbedBuilder()
-        .setColor(0xf0b232)
-        .setTitle('💳 بيانات الدفع / Payment Instructions')
-        .setDescription(
-          `**المنتج:** ${dig.titleEn} (${dig.platform})\n` +
-          `**المبلغ:** \`${pay.currency}${dig.price.toFixed(2)}\`\n` +
-          `**رقم العملية:** \`${payId}\`\n\n` +
-          textInfo + '\n\n' +
-          '⚠️ حوّل المبلغ ثم ارفع صورة الإيصال. الكود يسلم فوراً بعد التأكيد.\nTransfer the amount then upload the receipt. Code delivered instantly after confirmation.'
-        )
-        .setFooter({ text: store.settings.storeName + ' • Awaiting payment proof' })
-        .setTimestamp();
-
-      await interaction.reply({ embeds: [payEmbed] });
-      addLog('INFO', `${interaction.user.username} selected ${method.toUpperCase()} for ${payId} (digital)`);
-      return;
-    }
-
-    // ---- PAYMENT METHOD SELECT (boosting ticket) ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('paymethodboost_')) {
-      const parts = interaction.customId.split('_');
-      const boostId = parseInt(parts[1]);
-      const ticketId = parts.slice(2).join('_');
-      const boost = store.boostingServices.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ Boosting service missing.', ephemeral: true });
-      const ticket = store.tickets.find(t => t.id === ticketId);
-      if (!ticket) return interaction.reply({ content: '❌ Ticket missing.', ephemeral: true });
-
-      const method = interaction.values[0];
-      // Use the ticket's stored amount (which has the customer's calculated price based on their choices)
-      const boostPrice = ticket.amount || boost.price;
-      const payId = createPaymentRequest(interaction, null, ticket.accountTitle || (boost.titleEn + ' (Boosting)'), boostPrice, method, ticketId, null, null, boostId, null);
-      const pay = store.settings;
-      let textInfo = '';
-      if (method === 'stcpay') textInfo = `📱 **STC Pay**\nالرقم: \`${pay.stcPay.number}\`\nالاسم: *${pay.stcPay.name || '-'}*`;
-      if (method === 'alrajhi') textInfo = `🏦 **AlRajhi Bank**\nIBAN: \`${pay.alrajhi.iban}\`\nالاسم: *${pay.alrajhi.name || '-'}*`;
-      if (method === 'paypal') textInfo = `💳 **PayPal**\nرابط: ${pay.paypal.email}`;
-
-      const payEmbed = new EmbedBuilder()
-        .setColor(0xf0b232)
-        .setTitle('💳 بيانات الدفع / Payment Instructions')
-        .setDescription(
-          `**الخدمة:** ${ticket.accountTitle || boost.titleEn} (${boost.game})\n` +
-          `**المبلغ:** \`${pay.currency}${boostPrice.toFixed(2)}\`\n` +
-          `**ETA:** \`${boost.eta}\`\n` +
-          `**رقم العملية:** \`${payId}\`\n\n` +
-          textInfo + '\n\n' +
-          '⚠️ حوّل المبلغ ثم ارفع صورة الإيصال. بعد التأكيد، أرسل بيانات حسابك لبدء البوست.\nTransfer the amount then upload the receipt. After confirmation, send your account credentials to start the boost.'
-        )
-        .setFooter({ text: store.settings.storeName + ' • Awaiting payment proof' })
-        .setTimestamp();
-
-      await interaction.reply({ embeds: [payEmbed] });
-      addLog('INFO', `${interaction.user.username} selected ${method.toUpperCase()} for ${payId} (boosting)`);
-      return;
-    }
-
-    // ---- PAYMENT METHOD SELECT (camo ticket) ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('paymethodcamo_')) {
-      const parts = interaction.customId.split('_');
-      const camoId = parseInt(parts[1]);
-      const ticketId = parts.slice(2).join('_');
-      const camo = store.camoServices.find(s => s.id === camoId);
-      if (!camo) return interaction.reply({ content: '❌ Camo service missing.', ephemeral: true });
-      const ticket = store.tickets.find(t => t.id === ticketId);
-      if (!ticket) return interaction.reply({ content: '❌ Ticket missing.', ephemeral: true });
-
-      const method = interaction.values[0];
-      const camoPrice = ticket.amount || camo.pricePerCamo;
-      // createPaymentRequest signature: (interaction, accountId, accountTitle, amount, method, ticketId, poolId, digitalProductId, boostingServiceId, camoServiceId)
-      const payId = createPaymentRequest(interaction, null, ticket.accountTitle || (camo.titleEn + ' (Camo Unlock)'), camoPrice, method, ticketId, null, null, null, camoId);
-      const pay = store.settings;
-      let textInfo = '';
-      if (method === 'stcpay') textInfo = `📱 **STC Pay**\nالرقم: \`${pay.stcPay.number}\`\nالاسم: *${pay.stcPay.name || '-'}*`;
-      if (method === 'alrajhi') textInfo = `🏦 **AlRajhi Bank**\nIBAN: \`${pay.alrajhi.iban}\`\nالاسم: *${pay.alrajhi.name || '-'}*`;
-      if (method === 'paypal') textInfo = `💳 **PayPal**\nرابط: ${pay.paypal.email}`;
-
-      const payEmbed = new EmbedBuilder()
-        .setColor(0xf0b232)
-        .setTitle('💳 بيانات الدفع / Payment Instructions')
-        .setDescription(
-          `**الخدمة:** ${ticket.accountTitle || camo.titleEn} (${camo.game})\n` +
-          `**المبلغ:** \`${pay.currency}${camoPrice.toFixed(2)}\`\n` +
-          `**ETA:** \`${camo.eta}\`\n` +
-          `**رقم العملية:** \`${payId}\`\n\n` +
-          textInfo + '\n\n' +
-          '⚠️ حوّل المبلغ ثم ارفع صورة الإيصال. بعد التأكيد، أرسل بيانات حسابك لبدء فتح الكاموهات.\nTransfer the amount then upload the receipt. After confirmation, send your account credentials to start camo unlock.'
-        )
-        .setFooter({ text: store.settings.storeName + ' • Awaiting payment proof' })
-        .setTimestamp();
-
-      await interaction.reply({ embeds: [payEmbed] });
-      addLog('INFO', `${interaction.user.username} selected ${method.toUpperCase()} for ${payId} (camo)`);
-      return;
-    }
-
-    // ---- COUPON BUTTON (opens modal) ----
-    if (interaction.isButton() && interaction.customId.startsWith('coupon_')) {
-      const ticketId = interaction.customId.replace('coupon_', '');
-      const ticket = store.tickets.find(t => t.id === ticketId);
-      if (!ticket) return interaction.reply({ content: '❌ Ticket not found', ephemeral: true });
-      if (ticket.couponCode) return interaction.reply({ content: '✅ تم تطبيق كود خصم بالفعل: `' + ticket.couponCode + '`', ephemeral: true });
-
-      const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-      const modal = new ModalBuilder()
-        .setCustomId('couponmodal_' + ticketId)
-        .setTitle('🎁 كود الخصم / Coupon Code');
-      const input = new TextInputBuilder()
-        .setCustomId('coupon_code')
-        .setLabel('أدخل كود الخصم / Enter coupon code')
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder('e.g. SUMMER20')
-        .setRequired(true);
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
-      await interaction.showModal(modal);
-      return;
-    }
-
-    // ---- COUPON MODAL SUBMIT ----
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('couponmodal_')) {
-      const ticketId = interaction.customId.replace('couponmodal_', '');
-      const ticket = store.tickets.find(t => t.id === ticketId);
-      if (!ticket) return interaction.reply({ content: '❌ Ticket not found', ephemeral: true });
-      const code = interaction.fields.getTextInputValue('coupon_code').trim().toUpperCase();
-      const coupon = store.coupons.find(c => c.code === code);
-      if (!coupon) return interaction.reply({ content: '❌ كود غير صالح / Invalid coupon code.', ephemeral: true });
-      if (!coupon.active) return interaction.reply({ content: '❌ هذا الكود غير نشط / This coupon is inactive.', ephemeral: true });
-      if (coupon.uses >= coupon.maxUses) return interaction.reply({ content: '❌ تم استخدام هذا الكود لحد أقصى / Coupon usage limit reached.', ephemeral: true });
-      if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) return interaction.reply({ content: '❌ انتهت صلاحية الكود / Coupon expired.', ephemeral: true });
-
-      ticket.couponCode = code;
-      let discounted = ticket.amount;
-      if (coupon.type === 'percent') {
-        discounted = ticket.amount * (1 - coupon.value / 100);
-      } else {
-        discounted = Math.max(0, ticket.amount - coupon.value);
-      }
-      ticket.discountedAmount = parseFloat(discounted.toFixed(2));
-      saveStore();
-
-      const embed = new EmbedBuilder()
-        .setColor(0x23a55a)
-        .setTitle('✅ تم تطبيق الكود / Coupon Applied!')
-        .setDescription(
-          `🎁 الكود: \`${code}\`\n` +
-          `💰 الخصم: ${coupon.type === 'percent' ? coupon.value + '%' : store.settings.currency + coupon.value.toFixed(2)}\n` +
-          `💵 السعر الأصلي: ~~${store.settings.currency}${ticket.amount.toFixed(2)}~~\n` +
-          `✨ السعر بعد الخصم: \`${store.settings.currency}${ticket.discountedAmount.toFixed(2)}\``
-        )
-        .setFooter({ text: store.settings.storeName })
-        .setTimestamp();
-      await interaction.reply({ embeds: [embed] });
-      addLog('INFO', `Coupon ${code} applied to ticket ${ticketId}`);
-      return;
-    }
-
-    // ---- CLOSE TICKET BUTTON ----
-    if (interaction.isButton() && interaction.customId.startsWith('close_ticket_')) {
-      const ticketId = interaction.customId.replace('close_ticket_', '');
-      const ticket = store.tickets.find(t => t.id === ticketId);
-      if (!ticket) return interaction.reply({ content: '❌ تذكرة غير موجودة / Ticket missing.', ephemeral: true });
-      if (interaction.user.id !== ticket.userId && interaction.user.id !== store.settings.ownerId) {
-        // also allow staff roles
-        const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-        const isStaff = member && Array.isArray(store.settings.staffRoleIds) && store.settings.staffRoleIds.some(rid => member.roles.cache.has(rid));
-        if (!isStaff) return interaction.reply({ content: '❌ لا يمكنك إغلاق هذه التذكرة / Not allowed.', ephemeral: true });
-      }
-      ticket.status = 'closed';
-      ticket.closedAt = new Date().toISOString();
-      const pr = store.paymentRequests.find(p => p.id === ticket.paymentId);
-      if (pr && (pr.status === 'Pending' || pr.status === 'Rejected')) {
-        const acc = store.accounts.find(a => a.id === ticket.accountId);
-        if (acc && acc.status === 'reserved') { acc.status = 'available'; acc.soldTo = null; }
-      }
-      saveStore();
-      await interaction.reply({ content: '🔒 **تم إغلاق التذكرة / Ticket Closed** — سيتم حذفها خلال 5 ثوانٍ.' });
-      addLog('INFO', `Ticket ${ticketId} closed by ${interaction.user.username}`);
-      setTimeout(async () => { try { await interaction.channel.delete('Ticket closed'); } catch (e) {} }, 5000);
-      return;
-    }
-
-    // ---- VERIFY BUTTON ----
-    if (interaction.isButton() && interaction.customId.startsWith('verify_')) {
-      const accId = parseInt(interaction.customId.split('_')[1]);
-      const acc = store.accounts.find(a => a.id === accId);
-      if (!acc) return interaction.reply({ content: '❌ لا توجد معلومات / No info.', ephemeral: true });
-      const embed = new EmbedBuilder()
-        .setColor(store.settings.color || 0x9b59ff)
-        .setTitle('🔍 ' + acc.titleEn)
-        .setDescription(acc.titleAr || '')
-        .addFields(
-          { name: 'Status', value: '`' + acc.status + '`', inline: true },
-          { name: 'Rank', value: '`' + (acc.prestige || '-') + '`', inline: true },
-          { name: 'Warranty', value: '`' + (acc.warranty > 0 ? acc.warranty + 'd' : 'None') + '`', inline: true },
-          { name: 'Price', value: '`' + store.settings.currency + acc.price.toFixed(2) + '`', inline: true },
-          { name: 'Images', value: '`' + acc.images.length + '`', inline: true }
-        )
-        .setFooter({ text: store.settings.storeName + ' • ID ' + acc.id })
-        .setTimestamp();
-      return interaction.reply({ embeds: [embed], ephemeral: true });
-    }
-
-  } catch (err) {
-    console.error('Interaction error:', err);
-    const msg = '❌ حدث خطأ / An error occurred.';
-    try {
-      if (interaction.replied || interaction.deferred) await interaction.followUp({ content: msg, ephemeral: true }).catch(() => {});
-      else await interaction.reply({ content: msg, ephemeral: true }).catch(() => {});
-    } catch (e) {}
-  }
-});
-
-// Helper: show gun select for a specific category (boosting gun_level flow)
-async function showGunSelectForBoost(interaction, boost, catIdx) {
-  const brandColor = store.settings.color || 0x9b59ff;
-  const cur = store.settings.currency;
-  const categories = getGunCategories(boost);
-  const cat = categories[catIdx] || categories[0];
-  if (!cat || !cat.guns || cat.guns.length === 0) {
-    return interaction.reply({ content: '❌ لا توجد أسلحة في هذه الفئة / No guns in this category.', ephemeral: true }).catch(()=>{});
-  }
-  const options = cat.guns.slice(0, 25).map((g, i) => ({
-    label: g.name.slice(0, 100),
-    value: String(i),
-    description: '$' + (g.pricePerLevel > 0 ? g.pricePerLevel : 13) + ' للمستوى الأقصى',
-    emoji: g.emoji || undefined
-  }));
-  const select = new StringSelectMenuBuilder()
-    .setCustomId('bstg_' + boost.id + '_' + catIdx)
-    .setPlaceholder('اختر السلاح / Select your gun')
-    .addOptions(options);
-  const catName = (cat.emoji ? cat.emoji + ' ' : '') + cat.name;
-  const embed = new EmbedBuilder()
-    .setColor(brandColor)
-    .setTitle('🚀 ' + boost.titleEn)
-    .setDescription(
-      `**الفئة: ${catName}**\n\n` +
-      `🔫 الأسلحة المتاحة: ${cat.guns.length}\n` +
-      `💰 السعر: \`$${(cat.guns[0]?.pricePerLevel > 0 ? cat.guns[0].pricePerLevel : 13)} لكل سلاح للمستوى الأقصى\`\n` +
-      `📊 الحد الأقصى للمستوى: ${boost.maxGunLevel}\n\n` +
-      `اختر السلاح 👇`
-    )
-    .setFooter({ text: store.settings.storeName + ' • الخطوة 2 من 3' });
-  // Use update() to replace the previous select menu (works for select menu interactions)
-  return interaction.update({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] }).catch(()=>{});
+function renderLogs(c) {
+  const logs = CACHE.logs || [];
+  c.innerHTML = `
+    <div class="page active">
+      <div class="page-header"><div><h2>Activity Logs</h2><p>${logs.length} entries (max 500)</p></div>
+        <button class="btn btn-danger" onclick="clearLogs()"><i class="fa-solid fa-trash"></i> Clear All</button>
+      </div>
+      <div class="panel-card">
+        ${logs.length === 0 ? '<div class="empty"><i class="fa-solid fa-list"></i><p>No logs yet</p></div>' :
+          logs.map(l => `<div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:center">
+            <span class="mono text-muted" style="flex:0 0 140px">${new Date(l.time).toLocaleString()}</span>
+            <span style="flex:0 0 70px"><span class="badge ${l.level==='ERROR'?'rejected':l.level==='WARN'?'pending':'delivered'}">${l.level}</span></span>
+            <span style="flex:1">${escapeHtml(l.msg)}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+async function clearLogs() {
+  if (!confirm('Clear all logs?')) return;
+  try { await api('logs', { method:'DELETE' }); toast('success', 'Logs cleared'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
 }
 
-// Helper: show camo multi-select menu (called from ordercamo_ and camogun_ handlers)
-async function showCamoMultiSelect(interaction, camo, gunIdx) {
-  const brandColor = store.settings.color || 0x9b59ff;
-  const cur = store.settings.currency;
-  if (!camo.camoList || camo.camoList.length === 0) {
-    return interaction.reply({ content: '❌ لا توجد كاموهات مضافة / No camos configured.', ephemeral: true }).catch(()=>{});
-  }
-  const options = camo.camoList.slice(0, 25).map((c, i) => {
-    const p = (c.price !== null && c.price !== undefined) ? c.price : camo.pricePerCamo;
-    return { label: c.name.slice(0, 100), value: String(i), description: cur + p.toFixed(2), emoji: c.emoji || undefined };
-  });
-  const select = new StringSelectMenuBuilder()
-    .setCustomId('camocamos_' + camo.id + '_' + (gunIdx === null ? 'null' : gunIdx))
-    .setPlaceholder('اختر الكاموهات / Select camos (multi-select)')
-    .setMinValues(1)
-    .setMaxValues(Math.min(options.length, 25))
-    .addOptions(options);
-  const gunName = gunIdx !== null && camo.gunList[gunIdx] ? (camo.gunList[gunIdx].emoji ? camo.gunList[gunIdx].emoji + ' ' : '') + camo.gunList[gunIdx].name : '';
-  const embed = new EmbedBuilder()
-    .setColor(brandColor)
-    .setTitle('🎨 ' + camo.titleEn)
-    .setDescription(
-      `**Select which camos to unlock${gunName ? ' for ' + gunName : ''}.**\n` +
-      `💰 Price: \`${cur}${camo.pricePerCamo} per camo\` (or custom price per camo)\n` +
-      `📋 You can select multiple camos.`
-    )
-    .setFooter({ text: store.settings.storeName + (gunName ? ' • Step 2 of 2' : ' • Step 1 of 1') });
-  if (interaction.deferred || interaction.replied) {
-    return interaction.editReply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] }).catch(()=>{});
-  }
-  return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(()=>{});
+// ===== MODAL HELPERS =====
+function showModal(html) {
+  document.getElementById('modal').innerHTML = html;
+  document.getElementById('modalOverlay').classList.add('show');
+  _isModalOpen = true; // Prevent background re-renders while modal is open
 }
-
-// Helper: create camo unlock ticket (used by camocamoc_ handler)
-async function createCamoTicket(interaction, camo, gunIdx, selectedCamos, price) {
-  const categoryId = store.settings.ticketCategoryId;
-  if (!categoryId) return interaction.reply({ content: '❌ النظام غير جاهز / System not ready.', ephemeral: true }).catch(()=>{});
-  const guild = interaction.guild;
-  if (!guild) return interaction.reply({ content: '❌ داخل السيرفر فقط / Inside server only.', ephemeral: true }).catch(()=>{});
-  const category = guild.channels.cache.get(categoryId);
-  if (!category || category.type !== ChannelType.GuildCategory) return interaction.reply({ content: '❌ خطأ / Misconfigured.', ephemeral: true }).catch(()=>{});
-
-  const gunName = gunIdx !== null && camo.gunList[gunIdx] ? camo.gunList[gunIdx].name : 'Any gun';
-  const camosList = selectedCamos.map(c => c.name).join(', ');
-  const choiceText = gunName + ' — ' + camosList + ' (' + selectedCamos.length + ' camos)';
-
-  const ticketChannel = await guild.channels.create({
-    name: `🎨-${interaction.user.username}-camo${camo.id}`,
-    type: ChannelType.GuildText,
-    parent: category,
-    permissionOverwrites: [
-      { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-      { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] }
-    ]
-  });
-  if (store.settings.ownerId) {
-    await ticketChannel.permissionOverwrites.create(store.settings.ownerId, {
-      ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true, ManageChannels: true
-    }).catch(() => {});
-  }
-
-  const ticketId = 'TKT-' + String(store.tickets.length + 1).padStart(4, '0');
-  const ticket = {
-    id: ticketId, userId: interaction.user.id, userName: interaction.user.username,
-    accountId: null, poolId: null, digitalProductId: null, boostingServiceId: null, camoServiceId: camo.id,
-    accountTitle: camo.titleEn + ' — ' + choiceText, amount: parseFloat(price.toFixed(2)),
-    camoChoices: { gun: gunName, camos: selectedCamos.map(c => c.name) },
-    channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
-    status: 'open', createdAt: new Date().toISOString()
-  };
-  store.tickets.unshift(ticket);
-  saveStore();
-
-  const pay = store.settings;
-  const options = [];
-  if (pay.stcPay && pay.stcPay.number) options.push({ label: 'STC Pay', value: 'stcpay', description: 'STC Pay: ' + pay.stcPay.number, emoji: '📱' });
-  if (pay.alrajhi && pay.alrajhi.iban) options.push({ label: 'AlRajhi Bank', value: 'alrajhi', description: 'الراجحي', emoji: '🏦' });
-  if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal Link', emoji: '💳' });
-  if (options.length === 0) options.push({ label: 'No payment methods', value: 'none', description: 'Contact admin' });
-
-  const selectMenu = new StringSelectMenuBuilder().setCustomId('paymethodcamo_' + camo.id + '_' + ticketId).setPlaceholder('اختر طريقة الدفع / Choose payment').addOptions(options);
-
-  const embed = new EmbedBuilder()
-    .setColor(store.settings.color || 0x9b59ff)
-    .setTitle('🎨 طلب فتح كاموهات — ' + camo.titleEn)
-    .setDescription(
-      `**مرحباً ${interaction.user.username}! 👋**\n\n` +
-      `تم إنشاء تذكرة خاصة بك. اتبع الخطوات أدناه لإكمال طلبك:\n\n` +
-      `**📋 تفاصيل الطلب:**\n` +
-      `👤 العميل: **${interaction.user.username}**\n` +
-      `📦 الخدمة: **${camo.titleEn}** (${camo.game})\n` +
-      `🔫 السلاح: **${gunName}**\n` +
-      `🎨 الكاموهات: **${camosList}**\n` +
-      `📊 العدد: **${selectedCamos.length}** كامو\n` +
-      `💰 السعر: \`${pay.currency}${price.toFixed(2)}\`\n` +
-      `⏱️ المدة المتوقعة: \`${camo.eta}\`\n` +
-      `🎫 رقم التذكرة: \`${ticketId}\`\n\n` +
-      `**📋 خطوات إكمال الطلب:**\n` +
-      `1️⃣ اختر طريقة الدفع من القائمة بالأسفل\n` +
-      `2️⃣ حوّل المبلغ المطلوب\n` +
-      `3️⃣ ارفع صورة الإيصال هنا في التذكرة\n` +
-      `4️⃣ انتظر تأكيد الإدارة (يصلك إشعار في DM)\n` +
-      `5️⃣ أرسل بيانات حسابك لبدء فتح الكاموهات\n` +
-      `6️⃣ سيتم إشعارك فور الاكتمال ✅`
-    )
-    .setFooter({ text: store.settings.storeName + ' • ' + ticketId })
-    .setTimestamp();
-
-  const closeRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('close_ticket_' + ticketId).setLabel('إغلاق / Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
-    new ButtonBuilder().setCustomId('coupon_' + ticketId).setLabel('كود خصم / Coupon').setStyle(ButtonStyle.Secondary).setEmoji('🎁')
-  );
-
-  await ticketChannel.send({
-    content: '👤 <@' + interaction.user.id + '> | 🎨 تذكرة فتح كاموهات / Camo Unlock Ticket',
-    embeds: [embed],
-    components: [new ActionRowBuilder().addComponents(selectMenu), closeRow]
-  });
-
-  if (interaction.deferred || interaction.replied) {
-    await interaction.followUp({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true }).catch(()=>{});
-  } else {
-    await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true }).catch(()=>{});
-  }
-  addLog('INFO', `Camo ticket ${ticketId} for ${interaction.user.username} → ${camo.titleEn} (${choiceText}) $${price}`);
-  sendLogToDiscord(`🎨 Camo ticket \`${ticketId}\` by **${interaction.user.username}** for **${camo.titleEn}** (${choiceText}) — $${price}`);
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+  _isModalOpen = false;
+  refreshAll(true); // Re-render page after closing modal (shows new data)
 }
-
-// Helper: create boosting ticket (used by all boosting choice flows)
-async function createBoostingTicket(interaction, boost, choices, price) {
-  const categoryId = store.settings.ticketCategoryId;
-  if (!categoryId) return interaction.reply({ content: '❌ النظام غير جاهز / System not ready.', ephemeral: true }).catch(()=>{});
-  const guild = interaction.guild;
-  if (!guild) return interaction.reply({ content: '❌ داخل السيرفر فقط / Inside server only.', ephemeral: true }).catch(()=>{});
-  const category = guild.channels.cache.get(categoryId);
-  if (!category || category.type !== ChannelType.GuildCategory) return interaction.reply({ content: '❌ خطأ / Misconfigured.', ephemeral: true }).catch(()=>{});
-
-  // Build choice description for ticket title/embed
-  let choiceText = '';
-  if (choices.type === 'rank') choiceText = choices.fromRank + ' → ' + choices.toRank;
-  else if (choices.type === 'prestige') choiceText = 'Prestige ' + choices.targetLevel;
-  else if (choices.type === 'gun_level') choiceText = choices.gunName + ' ' + choices.fromLevel + '→' + choices.toLevel;
-  else choiceText = 'Fixed price';
-
-  const ticketChannel = await guild.channels.create({
-    name: `🚀-${interaction.user.username}-${boost.id}`,
-    type: ChannelType.GuildText,
-    parent: category,
-    permissionOverwrites: [
-      { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-      { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] }
-    ]
-  });
-  if (store.settings.ownerId) {
-    await ticketChannel.permissionOverwrites.create(store.settings.ownerId, {
-      ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true, ManageChannels: true
-    }).catch(() => {});
-  }
-
-  const ticketId = 'TKT-' + String(store.tickets.length + 1).padStart(4, '0');
-  const ticket = {
-    id: ticketId, userId: interaction.user.id, userName: interaction.user.username,
-    accountId: null, poolId: null, digitalProductId: null, boostingServiceId: boost.id,
-    accountTitle: boost.titleEn + ' — ' + choiceText, amount: parseFloat(price.toFixed(2)),
-    boostingEta: boost.eta, boostingChoices: choices,
-    channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
-    status: 'open', createdAt: new Date().toISOString()
-  };
-  store.tickets.unshift(ticket);
-  saveStore();
-
-  const pay = store.settings;
-  const options = [];
-  if (pay.stcPay && pay.stcPay.number) options.push({ label: 'STC Pay', value: 'stcpay', description: 'STC Pay: ' + pay.stcPay.number, emoji: '📱' });
-  if (pay.alrajhi && pay.alrajhi.iban) options.push({ label: 'AlRajhi Bank', value: 'alrajhi', description: 'الراجحي', emoji: '🏦' });
-  if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal Link', emoji: '💳' });
-  if (options.length === 0) options.push({ label: 'No payment methods', value: 'none', description: 'Contact admin' });
-
-  const selectMenu = new StringSelectMenuBuilder().setCustomId('paymethodboost_' + boost.id + '_' + ticketId).setPlaceholder('اختر طريقة الدفع / Choose payment').addOptions(options);
-
-  const embed = new EmbedBuilder()
-    .setColor(store.settings.color || 0x9b59ff)
-    .setTitle('🚀 طلب خدمة بوست — ' + boost.titleEn)
-    .setDescription(
-      `**مرحباً ${interaction.user.username}! 👋**\n\n` +
-      `تم إنشاء تذكرة خاصة بك. اتبع الخطوات أدناه لإكمال طلبك:\n\n` +
-      `**📋 تفاصيل الطلب:**\n` +
-      `👤 العميل: **${interaction.user.username}**\n` +
-      `📦 الخدمة: **${boost.titleEn}** (${boost.game})\n` +
-      `⚙️ التفاصيل: **${choiceText}**\n` +
-      `💰 السعر: \`${pay.currency}${price.toFixed(2)}\`\n` +
-      `⏱️ المدة المتوقعة: \`${boost.eta}\`\n` +
-      `🎫 رقم التذكرة: \`${ticketId}\`\n\n` +
-      `**📋 خطوات إكمال الطلب:**\n` +
-      `1️⃣ اختر طريقة الدفع من القائمة بالأسفل\n` +
-      `2️⃣ حوّل المبلغ المطلوب\n` +
-      `3️⃣ ارفع صورة الإيصال هنا في التذكرة\n` +
-      `4️⃣ انتظر تأكيد الإدارة (يصلك إشعار في DM)\n` +
-      `5️⃣ أرسل بيانات حسابك لبدء البوست\n` +
-      `6️⃣ سيتم إشعارك فور الاكتمال ✅`
-    )
-    .setFooter({ text: store.settings.storeName + ' • ' + ticketId })
-    .setTimestamp();
-
-  const closeRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('close_ticket_' + ticketId).setLabel('إغلاق / Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
-    new ButtonBuilder().setCustomId('coupon_' + ticketId).setLabel('كود خصم / Coupon').setStyle(ButtonStyle.Secondary).setEmoji('🎁')
-  );
-
-  await ticketChannel.send({
-    content: '👤 <@' + interaction.user.id + '> | 🚀 تذكرة خدمة بوست / Boosting Service Ticket',
-    embeds: [embed],
-    components: [new ActionRowBuilder().addComponents(selectMenu), closeRow]
-  });
-
-  // Reply to the interaction (ephemeral) with ticket link
-  if (interaction.deferred || interaction.replied) {
-    await interaction.followUp({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true }).catch(()=>{});
-  } else {
-    await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true }).catch(()=>{});
-  }
-  addLog('INFO', `Boosting ticket ${ticketId} for ${interaction.user.username} → ${boost.titleEn} (${choiceText}) $${price}`);
-  sendLogToDiscord(`🚀 Boosting ticket \`${ticketId}\` by **${interaction.user.username}** for **${boost.titleEn}** (${choiceText}) — $${price}`);
-}
-
-// Helper: create payment request record
-function createPaymentRequest(interaction, accountId, accountTitle, amount, method, ticketId, poolId, digitalProductId, boostingServiceId, camoServiceId) {
-  const payId = 'PAY-' + String(100 + store.paymentRequests.length + 1);
-  const ticket = store.tickets.find(t => t.id === ticketId);
-  let finalAmount = amount;
-  let couponCode = null;
-  if (ticket && ticket.couponCode) {
-    couponCode = ticket.couponCode;
-    finalAmount = ticket.discountedAmount || amount;
-  }
-  store.paymentRequests.unshift({
-    id: payId, userId: interaction.user.id, userName: interaction.user.username,
-    accountId, poolId, digitalProductId, boostingServiceId, camoServiceId, accountTitle, amount, discountedAmount: finalAmount, couponCode,
-    method: method.toUpperCase(), status: 'Pending',
-    date: new Date().toISOString().slice(0, 16).replace('T', ' ')
-  });
-  if (ticket) {
-    ticket.paymentId = payId;
-    ticket.paymentMethod = method.toUpperCase();
-    ticket.status = 'waiting_payment';
-  }
-  saveStore();
-  return payId;
-}
-
-// ===== MESSAGE HANDLER (receipt upload) =====
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
-
-  // Handle DM payment proof (legacy fallback)
-  if (message.channel.type === 1) {
-    const pending = store.paymentRequests.find(p => p.userId === message.author.id && p.status === 'Pending');
-    if (pending && message.attachments.size > 0) {
-      pending.status = 'Waiting Review';
-      pending.proofUrl = message.attachments.first().url;
-      saveStore();
-      addLog('WARN', `${message.author.username} uploaded proof for ${pending.id} (DM)`);
-      message.reply('✅ **تم استلام صورة الإيصال!**\nجاري مراجعة طلبك رقم `' + pending.id + '` للمنتج (**' + pending.accountTitle + '**).').catch(() => {});
-    }
-    return;
-  }
-
-  // Handle receipt upload in ticket channels
-  const ticket = store.tickets.find(t =>
-    t.channelId === message.channel.id && t.status !== 'closed'
-  );
-
-  if (ticket && message.attachments.size > 0) {
-    const imgAttachment = message.attachments.find(a => a.contentType && a.contentType.startsWith('image/'));
-    if (imgAttachment) {
-      const pr = store.paymentRequests.find(p => p.id === ticket.paymentId);
-      if (pr && (pr.status === 'Pending' || pr.status === 'Rejected')) {
-        pr.status = 'Waiting Review';
-        pr.proofUrl = imgAttachment.url;
-        ticket.status = 'waiting_review';
-        saveStore();
-
-        const embed = new EmbedBuilder()
-          .setColor(0xf0b232)
-          .setTitle('⏳ تم استلام الإيصال — تحت المراجعة')
-          .setDescription(
-            `**شكراً ${message.author.username}! 👋**\n\n` +
-            `تم استلام إيصال الدفع بنجاح ✅\n\n` +
-            `**📋 تفاصيل العملية:**\n` +
-            `🎫 رقم العملية: \`${pr.id}\`\n` +
-            `💰 المبلغ: \`${store.settings.currency}${(pr.discountedAmount || pr.amount).toFixed(2)}\`\n` +
-            `💳 طريقة الدفع: \`${pr.method}\`\n\n` +
-            `⏳ **جاري مراجعة الإيصال من قبل الإدارة...**\n` +
-            `سيتم إرسال التسليم أو طلب الحساب هنا فور التأكيد.\n` +
-            `📩 سيصلك إشعار في رسائلك الخاصة (DM) عند التأكيد.`
-          )
-          .setImage(imgAttachment.url)
-          .setFooter({ text: store.settings.storeName + ' • يرجى الانتظار' })
-          .setTimestamp();
-        await message.reply({ embeds: [embed] });
-
-        addLog('INFO', `Receipt uploaded in ticket ${ticket.id} by ${message.author.username} for ${pr.id}`);
-        sendLogToDiscord(`📨 Receipt uploaded in \`${ticket.id}\` for \`${pr.id}\` — **${ticket.accountTitle}** ($${pr.discountedAmount || pr.amount})`);
-      }
-    }
-  }
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if (e.target.id === 'modalOverlay') closeModal();
 });
 
-// ===== SERVER START =====
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[${STORE_NAME}] Panel server running on port ${PORT}`);
-  console.log(`[${STORE_NAME}] Default panel password: ${PANEL_PASSWORD === 'admin123' ? 'admin123 (CHANGE IT!)' : '(set via env)'}`);
+// ===== UTILITIES =====
+function val(id) { return (document.getElementById(id)?.value || '').trim(); }
+function escapeHtml(s) { if (s == null) return ''; return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]); }
+function escapeAttr(s) { return escapeHtml(s); }
+
+// Global search shortcut
+document.getElementById('globalSearch')?.addEventListener('input', e => {
+  if (CURRENT_PAGE === 'products') { document.getElementById('accSearch').value = e.target.value; filterProducts(); }
 });
 
-if (!process.env.DISCORD_TOKEN) {
-  console.error(`[${STORE_NAME}] ERROR: DISCORD_TOKEN env var not set! Bot will not connect.`);
-} else {
-  client.login(process.env.DISCORD_TOKEN).catch(err => console.error(`[${STORE_NAME}] Discord login failed:`, err.message));
+// Init
+window.addEventListener('DOMContentLoaded', () => {
+  if (window.innerWidth <= 900) document.getElementById('mobileMenuBtn').style.display = 'flex';
+  checkAuth();
+  setupKeyboardShortcuts();
+});
+
+// ===== KEYBOARD SHORTCUTS (speed up admin workflow) =====
+// Alt+1..9 = switch nav pages, Alt+N = new product, Alt+R = refresh, Alt+/ = focus search, Esc = close modal
+function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    // Skip if typing in input/textarea/select
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (['input','textarea','select'].includes(tag) && !e.altKey) return;
+    // Esc closes modal
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('modalOverlay');
+      if (modal && modal.classList.contains('show')) { closeModal(); return; }
+    }
+    if (!e.altKey) return;
+    const shortcuts = {
+      '1': 'dashboard', '2': 'products', '3': 'pools', '4': 'digital',
+      '5': 'boosting', '6': 'camo', '7': 'orders', '8': 'payments',
+      '9': 'tickets', '0': 'customers'
+    };
+    if (shortcuts[e.key]) {
+      e.preventDefault();
+      const navItem = document.querySelector(`.nav-item[data-page="${shortcuts[e.key]}"]`);
+      if (navItem) navItem.click();
+    } else if (e.key.toLowerCase() === 'n') {
+      e.preventDefault();
+      // New button — context-aware based on current page
+      const newBtns = { products:'openAccountModal()', pools:'openPoolModal()', digital:'openDigitalModal()',
+        boosting:'openBoostingModal()', camo:'openCamoModal()', coupons:'openCouponModal()' };
+      if (newBtns[CURRENT_PAGE]) eval(newBtns[CURRENT_PAGE]);
+    } else if (e.key.toLowerCase() === 'r') {
+      e.preventDefault();
+      refreshAll(true);
+      toast('info', 'Refreshed');
+    } else if (e.key === '/') {
+      e.preventDefault();
+      const search = document.getElementById('globalSearch');
+      if (search) search.focus();
+    } else if (e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      // Save button in any open modal
+      const saveBtn = document.querySelector('#modal .btn-primary');
+      if (saveBtn) saveBtn.click();
+    }
+  });
 }
 
-// Save store every 60 seconds as safety net
-setInterval(() => { try { fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2)); } catch (e) {} }, 60000);
+// ===== QUICK STATS BADGE in topbar (shows pending count) =====
+function updateTopbarBadge() {
+  const pending = (CACHE.stats?.pendingPayments || 0) + (CACHE.stats?.openTickets || 0);
+  let badge = document.getElementById('topbarAlertBadge');
+  if (!badge) {
+    const actions = document.querySelector('.topbar-actions');
+    if (!actions) return;
+    badge = document.createElement('button');
+    badge.id = 'topbarAlertBadge';
+    badge.className = 'btn-icon';
+    badge.style.position = 'relative';
+    badge.innerHTML = '<i class="fa-solid fa-bell"></i><span id="alertCount" style="position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;min-width:16px;text-align:center"></span>';
+    badge.title = 'Pending payments + open tickets';
+    badge.onclick = () => { const navItem = document.querySelector('.nav-item[data-page="payments"]'); if (navItem) navItem.click(); };
+    actions.insertBefore(badge, actions.firstChild);
+  }
+  const count = document.getElementById('alertCount');
+  if (count) {
+    count.textContent = pending;
+    count.style.display = pending > 0 ? 'block' : 'none';
+  }
+}
+// Hook into refreshAll to update badge
+const _origRenderPage = renderPage;
+renderPage = function() { _origRenderPage(); updateTopbarBadge(); };
+
+</script>
+</body>
+</html>
