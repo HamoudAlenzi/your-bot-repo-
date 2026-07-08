@@ -1653,7 +1653,7 @@ app.post('/api/customboost', async (req, res) => {
       descriptionEn: descriptionEn || '', descriptionAr: descriptionAr || '',
       images: Array.isArray(images) ? images : [],
       // slots: [{ name, price }, ...] — up to 10
-      slots: Array.isArray(slots) ? slots.filter(s => s.name).slice(0, 5) : [],
+      slots: Array.isArray(slots) ? slots.filter(s => s.name).slice(0, 10) : [],
       status: 'active',
       createdAt: new Date().toISOString(), discordMessageIds: []
     };
