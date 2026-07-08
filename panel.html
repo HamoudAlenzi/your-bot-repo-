@@ -429,7 +429,7 @@ a:hover{color:var(--accent-2)}
 const API = '/api';
 let SESSION = localStorage.getItem('isiam_session') || '';
 let CURRENT_PAGE = 'dashboard';
-let CACHE = { accounts:[], orders:[], payments:[], tickets:[], customers:[], pools:[], coupons:[], settings:{}, logs:[], stats:{}, digital:[], boosting:[], camo:[], customboost:[] };
+let CACHE = { accounts:[], orders:[], payments:[], tickets:[], customers:[], pools:[], coupons:[], settings:{}, logs:[], stats:{} };
 let IMAGE_QUEUE = []; // for new product modal
 
 // ===== CALL OF DUTY: BLACK OPS 7 / WARZONE CATALOGUE =====
@@ -1582,10 +1582,10 @@ function openCamoModal(editId) {
   window._camoImages = edit && edit.images ? [...edit.images] : [];
   const isEdit = !!edit;
   const v = (k, d='') => edit ? (edit[k] !== undefined && edit[k] !== null ? edit[k] : d) : d;
-  // Build 6 camo slots from existing camoList or empty
+  // Build 8 camo slots from existing camoList or empty
   const existingCamos = edit && edit.camoList ? edit.camoList : [];
   const slots = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     const c = existingCamos[i] || {};
     slots.push({
       name: c.name || '',
@@ -1650,9 +1650,9 @@ async function saveCamo(editId) {
   if (file) { newImage = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
   let images = window._camoImages || [];
   if (newImage) { images = [newImage, ...images.slice(0, 9)]; }
-  // Build camoList from 6 slots
+  // Build camoList from 8 slots
   const camoList = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     const name = val('cm_camo'+i+'_name');
     const price = val('cm_camo'+i+'_price');
     if (name) {
@@ -1736,7 +1736,7 @@ function renderCustomBoost(c) {
         <div><h2>BOOSTING</h2><p>${services.length} services • Full control — name your boosts, set prices</p></div>
         <button class="btn btn-primary" onclick="openCustomBoostModal()"><i class="fa-solid fa-plus"></i> New Boost</button>
       </div>
-      ${services.length === 0 ? '<div class="empty"><i class="fa-solid fa-bolt"></i><p>No boosting services yet. Create one with up to 5 custom slots.</p><button class="btn btn-primary" onclick="openCustomBoostModal()"><i class="fa-solid fa-plus"></i> Create</button></div>' :
+      ${services.length === 0 ? '<div class="empty"><i class="fa-solid fa-bolt"></i><p>No boosting services yet. Create one with up to 10 custom slots.</p><button class="btn btn-primary" onclick="openCustomBoostModal()"><i class="fa-solid fa-plus"></i> Create</button></div>' :
         `<div class="account-grid">${services.map(s => {
           const slotCount = s.slots ? s.slots.length : 0;
           const slotsPreview = s.slots && s.slots.length > 0 ? s.slots.slice(0, 3).map(sl => `${escapeHtml(sl.name)} (${cur}${sl.price||0})`).join(', ') + (slotCount > 3 ? ' +' + (slotCount - 3) : '') : 'No slots';
@@ -1771,7 +1771,7 @@ function openCustomBoostModal(editId) {
   const v = (k, d='') => edit ? (edit[k] !== undefined && edit[k] !== null ? edit[k] : d) : d;
   const existingSlots = edit && edit.slots ? edit.slots : [];
   const slotFields = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 10; i++) {
     const s = existingSlots[i] || {};
     slotFields.push(`<div class="form-row"><div class="form-field"><label>Slot ${i+1} Name</label><input id="cb_slot${i}_name" value="${escapeAttr(s.name||'')}" placeholder="e.g. Bronze to Silver"></div><div class="form-field"><label>Slot ${i+1} Price ($)</label><input id="cb_slot${i}_price" type="number" step="0.01" value="${s.price||''}" placeholder="e.g. 10"></div></div>`);
   }
@@ -1788,7 +1788,7 @@ function openCustomBoostModal(editId) {
         <div class="form-field"><label>Cover Image</label><input type="file" id="cb_image" accept="image/*"></div>
       </div>
       <div class="panel-card" style="background:var(--bg-elev);border:1px solid var(--border)">
-        <h3 style="margin-bottom:12px"><i class="fa-solid fa-bolt"></i> Boost Slots (5 — fill what you want)</h3>
+        <h3 style="margin-bottom:12px"><i class="fa-solid fa-bolt"></i> Boost Slots (10 — fill what you want)</h3>
         ${slotFields.join('')}
         <p class="text-xs text-muted mt-2">Leave empty slots if not needed. Customer picks from filled ones.</p>
       </div>
@@ -1806,7 +1806,7 @@ async function saveCustomBoost(editId) {
   let images = window._cbImages || [];
   if (newImage) { images = [newImage, ...images.slice(0, 9)]; }
   const slots = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 10; i++) {
     const name = val('cb_slot'+i+'_name');
     const price = val('cb_slot'+i+'_price');
     if (name) slots.push({ name, price: price ? parseFloat(price) : 0 });
@@ -2294,9 +2294,7 @@ function setupKeyboardShortcuts() {
       // New button — context-aware based on current page
       const newBtns = { products:'openAccountModal()', pools:'openPoolModal()', digital:'openDigitalModal()',
         boosting:'openBoostingModal()', camo:'openCamoModal()', coupons:'openCouponModal()' };
-      if (newBtns[CURRENT_PAGE]) {
-        try { new Function(newBtns[CURRENT_PAGE])(); } catch(e) {}
-      }
+      if (newBtns[CURRENT_PAGE]) eval(newBtns[CURRENT_PAGE]);
     } else if (e.key.toLowerCase() === 'r') {
       e.preventDefault();
       refreshAll(true);
@@ -2336,8 +2334,9 @@ function updateTopbarBadge() {
     count.style.display = pending > 0 ? 'block' : 'none';
   }
 }
-// Update topbar badge (called from refreshAll, not from renderPage)
-// Removed _origRenderPage override to prevent potential issues
+// Hook into refreshAll to update badge
+const _origRenderPage = renderPage;
+renderPage = function() { _origRenderPage(); updateTopbarBadge(); };
 
 </script>
 </body>
