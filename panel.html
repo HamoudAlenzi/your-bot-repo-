@@ -1261,43 +1261,26 @@ function renderBoosting(c) {
   c.innerHTML = `
     <div class="page active">
       <div class="page-header">
-        <div><h2>Boosting Services</h2><p>${services.length} services • CoD/Warzone rank, prestige, gun level boosting</p></div>
+        <div><h2>Boosting Services</h2><p>${services.length} services • Slot-based boosting — you add up to 5 boost packages, customer picks</p></div>
         <button class="btn btn-primary" onclick="openBoostingModal()"><i class="fa-solid fa-plus"></i> New Boosting Service</button>
       </div>
-      ${services.length === 0 ? '<div class="empty"><i class="fa-solid fa-rocket"></i><p>No boosting services yet. Create rank boosts, prestige leveling, gun leveling for CoD / Warzone.</p><button class="btn btn-primary" onclick="openBoostingModal()"><i class="fa-solid fa-plus"></i> Create Boosting Service</button></div>' :
+      ${services.length === 0 ? '<div class="empty"><i class="fa-solid fa-rocket"></i><p>No boosting services yet. Add up to 5 boost packages — e.g. Rank Boost, Prestige Level, Gun Level, BP Push, Account Level.</p><button class="btn btn-primary" onclick="openBoostingModal()"><i class="fa-solid fa-plus"></i> Create Boosting Service</button></div>' :
         `<div class="account-grid">${services.map(s => {
-          // Build detail line based on service type
-          let serviceDetail = '';
-          if (s.serviceType === 'rank') {
-            if (s.rankList && s.rankList.length >= 2) {
-              const firstRank = s.rankList[0];
-              const lastRank = s.rankList[s.rankList.length-1];
-              serviceDetail = `${firstRank.emoji||'🥉'} ${escapeHtml(firstRank.name)} → ${lastRank.emoji||'👑'} ${escapeHtml(lastRank.name)} (${(s.rankTiers||3)} tiers)`;
-            } else {
-              serviceDetail = `${escapeHtml(s.fromRank||'-')} → ${escapeHtml(s.toRank||'-')}`;
-            }
-          } else if (s.serviceType === 'prestige') {
-            serviceDetail = `${s.prestigeEmoji||'🎖️'} Max Prestige ${s.maxPrestige||'-'}`;
-          } else if (s.serviceType === 'gun_level') {
-            if (s.gunList && s.gunList.length > 0) {
-              serviceDetail = `${s.gunList.length} guns available`;
-            } else {
-              serviceDetail = `${escapeHtml(s.gunName||'-')}: ${escapeHtml(s.fromLevel||'-')} → ${escapeHtml(s.toLevel||'-')}`;
-            }
-          }
+          const boostsCount = s.boostList ? s.boostList.length : 0;
+          const boostsPreview = s.boostList && s.boostList.length > 0 ? s.boostList.slice(0, 4).map(b => (b.emoji||'') + ' ' + escapeHtml(b.name)).join(', ') + (boostsCount > 4 ? ' +' + (boostsCount - 4) : '') : 'No boosts';
           return `
           <div class="account-card">
             <div class="thumb">
               ${s.images&&s.images[0] ? `<img src="${s.images[0]}">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--accent);font-size:32px"><i class="fa-solid fa-rocket"></i></div>`}
               <div class="game-tag">${escapeHtml(s.game)}</div>
-              <div style="position:absolute;top:8px;right:8px"><span class="badge available">${s.serviceType.replace('_',' ')}</span></div>
+              <div style="position:absolute;top:8px;right:8px"><span class="badge available">${boostsCount} boosts</span></div>
             </div>
             <div class="body">
               <h4>${escapeHtml(s.titleEn)}</h4>
               <div class="sub">${escapeHtml(s.titleAr||'')}</div>
-              <div class="price">${cur}${s.price.toFixed(2)} <span class="text-xs text-muted" style="font-weight:400">starting</span></div>
+              <div class="price">${cur}${s.pricePerBoost.toFixed(2)} <span class="text-xs text-muted" style="font-weight:400">per boost</span></div>
               <div class="meta">
-                <span><i class="fa-solid fa-chart-line"></i> ${serviceDetail}</span>
+                <span><i class="fa-solid fa-rocket"></i> ${boostsPreview}</span>
                 <span><i class="fa-solid fa-clock"></i> ${escapeHtml(s.eta||'')}</span>
               </div>
             </div>
@@ -1314,28 +1297,22 @@ function renderBoosting(c) {
 function viewBoosting(id) {
   const s = CACHE.boosting.find(x => x.id === id); if (!s) return;
   const cur = CACHE.settings.currency || '$';
-  let detailHtml = '';
-  if (s.serviceType === 'rank' && s.rankList && s.rankList.length) {
-    detailHtml = `<div class="form-field"><label>Available Ranks (${s.rankTiers||3} tiers each)</label><div>${s.rankList.map(r => `<div style="padding:4px 0;border-bottom:1px solid var(--border)">${r.emoji||''} <b>${escapeHtml(r.name)}</b> ${r.name===s.rankList[s.rankList.length-1].name?'<span class="text-xs text-muted">(single-tier)</span>':'<span class="text-xs text-muted">— I, II, III</span>'}</div>`).join('')}</div></div>`;
-  } else if (s.serviceType === 'prestige') {
-    detailHtml = `<div class="form-field"><label>Available Levels</label><div>${s.prestigeEmoji||'🎖️'} 1 to ${s.maxPrestige} (${cur}${s.pricePerPrestige}/level)</div></div>`;
-  } else if (s.serviceType === 'gun_level' && s.gunList && s.gunList.length) {
-    detailHtml = `<div class="form-field"><label>Available Guns</label><div>${s.gunList.map(g => `<div style="padding:4px 0;border-bottom:1px solid var(--border)">${g.emoji||'🔫'} <b>${escapeHtml(g.name)}</b> — ${cur}${g.pricePerLevel}/level (max ${s.maxGunLevel})</div>`).join('')}</div></div>`;
-  }
+  const boostsHtml = s.boostList && s.boostList.length ? s.boostList.map(b => {
+    const p = (b.price !== null && b.price !== undefined) ? b.price : s.pricePerBoost;
+    return `<div style="padding:4px 0;border-bottom:1px solid var(--border)">${b.emoji||'🚀'} <b>${escapeHtml(b.name)}</b> — ${cur}${p.toFixed(2)}</div>`;
+  }).join('') : '<p class="text-muted">No boosts</p>';
   showModal(`
     <div class="modal-header"><h3>${escapeHtml(s.titleEn)}</h3><button class="close" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
       ${s.images && s.images.length ? `<div style="display:flex;overflow-x:auto;gap:8px;margin-bottom:16px">${s.images.map(src=>`<img src="${src}" style="height:180px;border-radius:8px;border:1px solid var(--border)">`).join('')}</div>` : ''}
       <div class="form-row-3">
         <div class="form-field"><label>Game</label><div>${escapeHtml(s.game)}</div></div>
-        <div class="form-field"><label>Type</label><div>${s.serviceType.replace('_',' ')}</div></div>
+        <div class="form-field"><label>Price per Boost</label><div class="mono" style="color:var(--gold);font-size:18px">${cur}${s.pricePerBoost.toFixed(2)}</div></div>
         <div class="form-field"><label>ETA</label><div>${escapeHtml(s.eta||'-')}</div></div>
       </div>
       <div class="form-row">
-        <div class="form-field"><label>Starting Price</label><div class="mono" style="color:var(--gold);font-size:18px">${cur}${s.price.toFixed(2)}</div></div>
-        <div class="form-field"><label>${s.serviceType==='rank'?'Price per Tier':s.serviceType==='prestige'?'Price per Level':'—'}</label><div class="mono">${s.serviceType==='rank'?cur+s.pricePerRank:s.serviceType==='prestige'?cur+s.pricePerPrestige:'-'}</div></div>
+        <div class="form-field"><label>Available Boosts (${s.boostList?s.boostList.length:0})</label><div>${boostsHtml}</div></div>
       </div>
-      ${detailHtml}
       ${s.descriptionEn?`<div class="form-field"><label>Description (EN)</label><div>${escapeHtml(s.descriptionEn)}</div></div>`:''}
       ${s.descriptionAr?`<div class="form-field"><label>Description (AR)</label><div>${escapeHtml(s.descriptionAr)}</div></div>`:''}
     </div>
@@ -1349,164 +1326,84 @@ async function repostBoosting(id) {
   try { await api(`boosting/${id}/repost`, { method:'POST' }); toast('success', 'Re-posted to Discord'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
-// Load BO7 guns into boosting gunList textarea (categorized format with # headers, $13/gun default)
-function loadBo7GunsToBoosting(scope) {
-  const ta = document.getElementById('b_gunList');
-  if (!ta) return;
-  let text;
-  if (scope === 'all') {
-    // Load all categories with # headers
-    text = BO7_CATALOG.gunsByCategory.map(cat => {
-      const header = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.category;
-      const guns = cat.weapons.map(w => (w.emoji||cat.emoji||'🔫') + ' ' + w.name + ':13');
-      return header + '\n' + guns.join('\n');
-    }).join('\n');
-  } else {
-    // Load single category
-    const cat = BO7_CATALOG.gunsByCategory.find(c => c.category === scope);
-    if (!cat) return;
-    text = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.category + '\n' +
-      cat.weapons.map(w => (w.emoji||cat.emoji||'🔫') + ' ' + w.name + ':13').join('\n');
-  }
-  ta.value = text;
-  const lineCount = text.split('\n').filter(l => l.trim() && !l.startsWith('#')).length;
-  toast('success', `Loaded ${lineCount} BO7 guns${scope!=='all'?' ('+scope+')':''} @ $13/gun`);
-}
 function openBoostingModal(editId) {
   const edit = editId ? CACHE.boosting.find(s => s.id === editId) : null;
   window._boostImages = edit && edit.images ? [...edit.images] : [];
   const isEdit = !!edit;
-  // Pre-fill values for edit mode
-  const v = (k, d='') => edit ? (edit[k] !== undefined ? edit[k] : d) : d;
-  // For rankList/gunList (arrays of objects), convert back to text format
-  const rankListText = edit && edit.rankList && edit.rankList.length
-    ? edit.rankList.map(r => (r.emoji ? (typeof r.emoji === 'object' ? `<:${r.emoji.name}:${r.emoji.id}>` : r.emoji) + ' ' : '') + r.name).join('\n')
-    : catalogToText(BO7_CATALOG.ranks);
-  const gunListText = edit && edit.gunList && edit.gunList.length
-    ? (edit.gunCategories && edit.gunCategories.length
-        ? edit.gunCategories.map(cat => {
-            const header = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.name;
-            const guns = cat.guns.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name + ':' + (g.pricePerLevel || 13));
-            return header + '\n' + guns.join('\n');
-          }).join('\n')
-        : edit.gunList.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name + ':' + (g.pricePerLevel || 13)).join('\n'))
-    : BO7_CATALOG.gunsByCategory.slice(0, 2).map(cat => {
-        const header = '# ' + (cat.emoji ? cat.emoji + ' ' : '') + cat.category;
-        const guns = cat.weapons.map(w => (w.emoji||cat.emoji||'🔫') + ' ' + w.name + ':13');
-        return header + '\n' + guns.join('\n');
-      }).join('\n');
-
+  const v = (k, d='') => edit ? (edit[k] !== undefined && edit[k] !== null ? edit[k] : d) : d;
+  // Build 5 boost slots from existing boostList or empty
+  const existingBoosts = edit && edit.boostList ? edit.boostList : [];
+  const slots = [];
+  for (let i = 0; i < 5; i++) {
+    const b = existingBoosts[i] || {};
+    slots.push({
+      name: b.name || '',
+      price: (b.price !== null && b.price !== undefined && b.price !== '') ? b.price : '',
+      emoji: b.emoji || ''
+    });
+  }
+  // Build 5 slot fields HTML
+  const slotsHtml = slots.map((s, i) => `
+    <div class="form-row">
+      <div class="form-field"><label>Boost ${i+1} Name</label><input id="b_boost${i}_name" value="${escapeAttr(s.name)}" placeholder="e.g. Rank Boost"></div>
+      <div class="form-field"><label>Boost ${i+1} Price ($)</label><input id="b_boost${i}_price" type="number" step="0.01" value="${s.price}" placeholder="e.g. 15"></div>
+    </div>`).join('');
   showModal(`
     <div class="modal-header"><h3>${isEdit?'Edit':'New'} Boosting Service</h3><button class="close" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
-      <div class="form-row"><div class="form-field"><label>Title (English) *</label><input id="b_titleEn" value="${escapeAttr(v('titleEn','Warzone Rank Boost'))}" placeholder="Warzone Rank Boost"></div>
-      <div class="form-field"><label>Title (Arabic)</label><input id="b_titleAr" value="${escapeAttr(v('titleAr',''))}" placeholder="بوست رتبة وورزون"></div></div>
+      <div class="form-row"><div class="form-field"><label>Title (English) *</label><input id="b_titleEn" value="${escapeAttr(v('titleEn','Warzone Boosting'))}" placeholder="Warzone Boosting"></div>
+      <div class="form-field"><label>Title (Arabic)</label><input id="b_titleAr" value="${escapeAttr(v('titleAr',''))}" placeholder="خدمات بوست وورزون"></div></div>
       <div class="form-row-3">
         <div class="form-field"><label>Game *</label><select id="b_game">
           ${['Call of Duty Black Ops 7','Call of Duty Warzone','Call of Duty','Call of Duty Mobile','Valorant','Fortnite','Apex Legends','Other'].map(g=>`<option ${v('game','Call of Duty Black Ops 7')===g?'selected':''}>${g}</option>`).join('')}
         </select></div>
-        <div class="form-field"><label>Service Type</label><select id="b_serviceType" onchange="toggleBoostFields()">
-          ${[['rank','Rank Boost (from → to)'],['prestige','Prestige Level'],['gun_level','Gun Level']].map(([val,lbl])=>`<option value="${val}" ${v('serviceType','rank')===val?'selected':''}>${lbl}</option>`).join('')}
-        </select></div>
-        <div class="form-field"><label>Starting Price (display) *</label><input id="b_price" type="number" step="0.01" value="${escapeAttr(v('price',15))}" placeholder="15.00"></div>
+        <div class="form-field"><label>Default Price per Boost ($)</label><input id="b_pricePerBoost" type="number" step="0.01" value="${v('pricePerBoost',10)}" placeholder="10.00">
+          <p class="text-xs text-muted">Used as fallback if slot price is empty</p></div>
+        <div class="form-field"><label>ETA</label><input id="b_eta" value="${escapeAttr(v('eta','24-48 hours'))}" placeholder="24-48 hours"></div>
       </div>
-
-      <div id="b_rankFields">
-        <div class="form-row">
-          <div class="form-field"><label>Available Ranks (emoji + name, one per line, lowest → highest)</label>
-            <div class="flex gap-2 mb-2" style="flex-wrap:wrap">
-              <button type="button" class="btn btn-sm" onclick="document.getElementById('b_rankList').value=catalogToText(BO7_CATALOG.ranks)"><i class="fa-solid fa-crown"></i> Load Warzone Ranks</button>
-              <button type="button" class="btn btn-sm" onclick="document.getElementById('b_rankList').value=''"><i class="fa-solid fa-eraser"></i> Clear</button>
-            </div>
-            <textarea id="b_rankList" style="min-height:140px;font-family:'JetBrains Mono',monospace" placeholder="🥉 Bronze&#10;🥈 Silver&#10;🥇 Gold&#10;💎 Diamond&#10;👑 Top 250">${escapeHtml(rankListText)}</textarea></div>
-          <div class="form-field"><label>Tiers per Rank</label><input id="b_rankTiers" type="number" min="1" max="10" value="${v('rankTiers',3)}">
-            <p class="text-xs text-muted mt-2">Each rank expands into N tiers: I, II, III...<br>e.g. Bronze with 3 tiers → Bronze I, Bronze II, Bronze III<br>Last rank (Top 250) is always single-tier</p>
-            <label class="mt-3">Price per Tier ($)</label><input id="b_pricePerRank" type="number" step="0.01" value="${v('pricePerRank',5)}">
-            <p class="text-xs text-muted mt-2">Customer picks from→to. Price = tiers crossed × this.<br>e.g. Bronze I → Gold I = 3 tiers × $5 = $13</p></div>
-        </div>
+      <div class="panel-card" style="background:var(--bg-elev);border:1px solid var(--border)">
+        <h3 style="margin-bottom:12px"><i class="fa-solid fa-rocket"></i> Boost Slots (fill what you want — up to 5)</h3>
+        ${slotsHtml}
+        <p class="text-xs text-muted mt-2">Leave any slot empty if you don't need it. Customer picks from filled slots.</p>
       </div>
-
-      <div id="b_prestigeFields" class="hidden">
-        <div class="form-row">
-          <div class="form-field"><label>Max Prestige Level</label><input id="b_maxPrestige" type="number" value="${v('maxPrestige',BO7_CATALOG.prestige.max)}" placeholder="10">
-            <button type="button" class="btn btn-sm mt-2" onclick="document.getElementById('b_maxPrestige').value=${BO7_CATALOG.prestige.max};document.getElementById('b_pricePerPrestige').value=${BO7_CATALOG.prestige.pricePerLevel};document.getElementById('b_prestigeEmoji').value='${BO7_CATALOG.prestige.emoji}'"><i class="fa-solid fa-medal"></i> Load BO7 Defaults (Prestige 1-10)</button></div>
-          <div class="form-field"><label>Prestige Emoji</label><input id="b_prestigeEmoji" value="${escapeAttr(v('prestigeEmoji',BO7_CATALOG.prestige.emoji))}" placeholder="🎖️" maxlength="40">
-            <p class="text-xs text-muted mt-2">Shown next to each prestige level. Use a custom emoji like <code>&lt;:prestige:123&gt;</code></p></div>
-          <div class="form-field"><label>Price per Prestige Level ($)</label><input id="b_pricePerPrestige" type="number" step="0.01" value="${v('pricePerPrestige',BO7_CATALOG.prestige.pricePerLevel)}">
-            <p class="text-xs text-muted mt-2">Customer picks target level. Price = level × this.<br>e.g. Prestige 5 = 5 × $10 = $50</p></div>
-        </div>
-      </div>
-
-      <div id="b_gunFields" class="hidden">
-        <div class="form-row">
-          <div class="form-field"><label>Available Guns (use # Category headers to group, then emoji GunName:price per line)</label>
-            <div class="flex gap-2 mb-2" style="flex-wrap:wrap">
-              <button type="button" class="btn btn-sm" onclick="loadBo7GunsToBoosting('all')"><i class="fa-solid fa-gun"></i> All BO7 Guns ($13)</button>
-              ${BO7_CATALOG.gunsByCategory.map(cat=>`<button type="button" class="btn btn-sm" onclick="loadBo7GunsToBoosting('${escapeAttr(cat.category)}')">${cat.emoji} ${escapeHtml(cat.category)}</button>`).join('')}
-            </div>
-            <textarea id="b_gunList" style="min-height:180px;font-family:'JetBrains Mono',monospace" placeholder="# Assault Rifles&#10;🔫 AK-27:13&#10;🔫 M15 MOD 0:13&#10;# SMGs&#10;💨 Dravec 45:13&#10;💨 Kogot-7:13">${escapeHtml(gunListText)}</textarea>
-            <p class="text-xs text-muted mt-2"><b>Format:</b> Lines starting with <code>#</code> are category names. Other lines are guns: <code>emoji GunName:price</code><br>
-            <b>Customer flow:</b> picks category → picks gun → enters levels → price = levels × price<br>
-            e.g. AK-27 1→100 = 99 × $13 = <b>$13</b> · Default price = $13/gun</p></div>
-          <div class="form-field"><label>Max Gun Level</label><input id="b_maxGunLevel" type="number" value="${v('maxGunLevel',100)}" placeholder="100">
-            <p class="text-xs text-muted mt-2">Max level a gun can reach (BO7 = 100).<br>Customer enters current level (1) → target level (100).</p>
-            <div class="mt-3" style="background:var(--bg-input);padding:10px;border-radius:8px;border:1px solid var(--border)">
-              <p class="text-xs text-muted" style="margin-bottom:4px"><b>💡 Pricing example:</b></p>
-              <p class="text-xs mono" style="color:var(--green)">AK-27: 1 → 100<br>= 99 levels × $13<br>= <b>$13</b></p>
-            </div></div>
-        </div>
-      </div>
-
-      <div class="form-row"><div class="form-field"><label>ETA</label><input id="b_eta" value="${escapeAttr(v('eta','24-48 hours'))}" placeholder="24-48 hours"></div>
-      <div class="form-field"><label>${isEdit?'New Cover Image (optional)':'Cover Image (optional)'}</label><input type="file" id="b_image" accept="image/*"></div></div>
+      <div class="form-row"><div class="form-field"><label>${isEdit?'New Cover Image (optional)':'Cover Image (optional)'}</label><input type="file" id="b_image" accept="image/*"></div></div>
       <div class="form-row"><div class="form-field"><label>Description (EN)</label><textarea id="b_descEn" placeholder="Professional booster, account safety guaranteed.">${escapeHtml(v('descriptionEn',''))}</textarea></div>
       <div class="form-field"><label>Description (AR)</label><textarea id="b_descAr" placeholder="بوستر محترف، ضمان أمان الحساب.">${escapeHtml(v('descriptionAr',''))}</textarea></div></div>
     </div>
     <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveBoosting(${editId||0})"><i class="fa-solid fa-rocket"></i> ${isEdit?'Update':'Create'}</button></div>
   `);
-  toggleBoostFields();
-}
-function toggleBoostFields() {
-  const t = val('b_serviceType');
-  document.getElementById('b_rankFields').classList.toggle('hidden', t !== 'rank');
-  document.getElementById('b_prestigeFields').classList.toggle('hidden', t !== 'prestige');
-  document.getElementById('b_gunFields').classList.toggle('hidden', t !== 'gun_level');
 }
 async function saveBoosting(editId) {
   const file = document.getElementById('b_image').files[0];
   let newImage = null;
   if (file) { newImage = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
-  // Use existing images + new image (replace if any)
   let images = window._boostImages || [];
   if (newImage) { images = [newImage, ...images.slice(0, 9)]; }
-  const serviceType = val('b_serviceType');
+  // Build boostList from 5 slots
+  const boostList = [];
+  for (let i = 0; i < 5; i++) {
+    const name = val('b_boost'+i+'_name');
+    const price = val('b_boost'+i+'_price');
+    if (name) {
+      boostList.push({
+        name: name,
+        emoji: '',
+        price: price ? parseFloat(price) : null
+      });
+    }
+  }
   const data = {
     titleEn: val('b_titleEn'), titleAr: val('b_titleAr'),
-    game: val('b_game'), serviceType,
-    price: parseFloat(val('b_price')) || 0,
+    game: val('b_game'),
+    pricePerBoost: parseFloat(val('b_pricePerBoost')) || 0,
     eta: val('b_eta') || '24-48 hours',
+    boostList: boostList,
     descriptionEn: val('b_descEn'), descriptionAr: val('b_descAr'),
     images
   };
-  if (serviceType === 'rank') {
-    data.rankList = document.getElementById('b_rankList').value.split('\n').map(s=>s.trim()).filter(Boolean);
-    data.rankTiers = parseInt(val('b_rankTiers')) || 3;
-    data.pricePerRank = parseFloat(val('b_pricePerRank')) || 0;
-    if (data.rankList.length < 2) return toast('error', 'Add at least 2 ranks');
-    if (data.pricePerRank <= 0) return toast('error', 'Set price per tier');
-  } else if (serviceType === 'prestige') {
-    data.maxPrestige = parseInt(val('b_maxPrestige')) || 0;
-    data.pricePerPrestige = parseFloat(val('b_pricePerPrestige')) || 0;
-    data.prestigeEmoji = val('b_prestigeEmoji') || '🎖️';
-    if (data.maxPrestige < 1) return toast('error', 'Set max prestige level');
-    if (data.pricePerPrestige <= 0) return toast('error', 'Set price per prestige level');
-  } else if (serviceType === 'gun_level') {
-    data.gunList = document.getElementById('b_gunList').value.split('\n').map(s=>s.trim()).filter(Boolean);
-    data.maxGunLevel = parseInt(val('b_maxGunLevel')) || 100;
-    if (data.gunList.length < 1) return toast('error', 'Add at least 1 gun (format: emoji GunName:PricePerLevel)');
-  }
-  if (!data.titleEn || !data.price) return toast('error', 'Title and starting price required');
+  if (!data.titleEn) return toast('error', 'Title required');
+  if (boostList.length === 0) return toast('error', 'Fill at least 1 boost slot');
   try {
     if (editId) {
       await api('boosting/'+editId, { method:'PUT', body: JSON.stringify(data) });
@@ -1581,10 +1478,10 @@ function openCamoModal(editId) {
   window._camoImages = edit && edit.images ? [...edit.images] : [];
   const isEdit = !!edit;
   const v = (k, d='') => edit ? (edit[k] !== undefined && edit[k] !== null ? edit[k] : d) : d;
-  // Build 4 camo slots from existing camoList or empty
+  // Build 6 camo slots from existing camoList or empty
   const existingCamos = edit && edit.camoList ? edit.camoList : [];
   const slots = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     const c = existingCamos[i] || {};
     slots.push({
       name: c.name || '',
@@ -1649,9 +1546,9 @@ async function saveCamo(editId) {
   if (file) { newImage = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
   let images = window._camoImages || [];
   if (newImage) { images = [newImage, ...images.slice(0, 9)]; }
-  // Build camoList from 4 slots
+  // Build camoList from 6 slots
   const camoList = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     const name = val('cm_camo'+i+'_name');
     const price = val('cm_camo'+i+'_price');
     if (name) {
