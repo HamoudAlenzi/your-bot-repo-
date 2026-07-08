@@ -1084,7 +1084,8 @@ app.post('/api/boosting', async (req, res) => {
       maxPrestige: parseInt(maxPrestige) || 0,
       pricePerPrestige: parseFloat(pricePerPrestige) || 0,
       prestigeEmoji: prestigeEmoji || '🎖️',
-      gunList: Array.isArray(gunList) ? gunList.map(parseGunEntry) : (gunList ? parseGunListInput(gunList) : []),
+      gunList: parseGunListInput(gunList).gunList,
+      gunCategories: parseGunListInput(gunList).gunCategories,
       maxGunLevel: parseInt(maxGunLevel) || 100,
       status: 'active',
       createdAt: new Date().toISOString(), discordMessageIds: []
@@ -1142,49 +1143,48 @@ function parseGunEntry(line) {
 // Format 2 (categorized): ['# Assault Rifles', '🔫 M4A1:0.50', '🔫 AK-47', '# SMGs', '💨 MP5:0.40']
 //   → gunCategories = [{name:'Assault Rifles', emoji:'🔫', guns:[{name,emoji,pricePerLevel},...]}, ...]
 // Lines starting with '#' or '##' are category headers (optional emoji after #)
+// Returns { gunList: [...flat guns...], gunCategories: [...categories...] or [] }
 function parseGunListInput(input) {
   if (typeof input === 'string') input = input.split('\n');
-  if (!Array.isArray(input)) return [];
-  const result = []; // flat gunList (backwards compat)
-  const categories = []; // gunCategories (new)
+  if (!Array.isArray(input)) return { gunList: [], gunCategories: [] };
+  const gunList = []; // flat list
+  const gunCategories = []; // categorized
   let currentCat = null;
   for (let line of input) {
-    if (typeof line === 'object') { result.push(line); continue; }
+    if (typeof line === 'object') { gunList.push(line); continue; }
     line = String(line).trim();
     if (!line) continue;
-    // Category header: '# Assault Rifles' or '## 🔫 Assault Rifles' or '## Assault Rifles'
-    const catMatch = line.match(/^#+\s*((<:\w+:\d+>|\p{Extended_Pictographic}|\p{Emoji})(\uFE0F)?(?:\u200D(?:\p{Extended_Pictographic}|\p{Emoji}))*\s*)?(.+)$/u);
-    if (catMatch && line.startsWith('#')) {
-      const emojiPart = catMatch[2] || '';
-      const catName = catMatch[4].trim();
-      currentCat = { name: catName, emoji: emojiPart.trim(), guns: [] };
-      categories.push(currentCat);
+    // Category header: '# Assault Rifles' or '## 🔫 Assault Rifles'
+    if (line.startsWith('#')) {
+      const headerText = line.replace(/^#+\s*/, '');
+      let catEmoji = '';
+      let catName = headerText;
+      const customMatch = headerText.match(/^<:(\w+):(\d+)>\s*(.+)$/);
+      if (customMatch) { catEmoji = { id: customMatch[2], name: customMatch[1] }; catName = customMatch[3].trim(); }
+      else {
+        const unicodeMatch = headerText.match(/^(\p{Extended_Pictographic}|\p{Emoji})(\uFE0F)?(?:\u200D(?:\p{Extended_Pictographic}|\p{Emoji}))*\s*(.+)$/u);
+        if (unicodeMatch) { catEmoji = headerText.slice(0, headerText.length - unicodeMatch[3].length).trim(); catName = unicodeMatch[3].trim(); }
+      }
+      currentCat = { name: catName, emoji: catEmoji, guns: [] };
+      gunCategories.push(currentCat);
       continue;
     }
     // Regular gun line
     const gun = parseGunEntry(line);
-    result.push(gun);
+    gunList.push(gun);
     if (currentCat) currentCat.guns.push(gun);
     else {
-      // Gun without category — create an "Other" category
-      const otherCat = categories.find(c => c.name === 'Other');
+      const otherCat = gunCategories.find(c => c.name === 'Other');
       if (otherCat) otherCat.guns.push(gun);
-      else categories.push({ name: 'Other', emoji: '🔫', guns: [gun] });
+      else gunCategories.push({ name: 'Other', emoji: '🔫', guns: [gun] });
     }
   }
-  // Return a special array with __categories property
-  // Backwards-compat: result is still a flat array of guns
-  // But if categories were detected, attach them as result.__categories
-  if (categories.length > 0 && categories.some(c => c.guns.length > 0)) {
-    Object.defineProperty(result, '__categories', { value: categories, enumerable: false, writable: true });
-  }
-  return result;
+  return { gunList, gunCategories };
 }
 
-// Get gun categories from a boosting/camo service (returns [] if flat list)
+// Get gun categories from a boosting/camo service
 function getGunCategories(service) {
-  if (service.gunList && service.gunList.__categories) return service.gunList.__categories;
-  // Fallback: build a single "All Guns" category from flat list
+  if (service.gunCategories && service.gunCategories.length > 0) return service.gunCategories;
   if (service.gunList && service.gunList.length > 0) {
     return [{ name: 'All Guns', emoji: '🔫', guns: service.gunList }];
   }
@@ -1286,7 +1286,13 @@ app.put('/api/boosting/:id', (req, res) => {
   try {
     const s = store.boostingServices.find(x => x.id === parseInt(req.params.id));
     if (!s) return res.status(404).json({ error: 'Not found' });
-    Object.assign(s, req.body, { id: s.id });
+    const body = { ...req.body };
+    if (body.gunList) {
+      const parsed = parseGunListInput(body.gunList);
+      body.gunList = parsed.gunList;
+      body.gunCategories = parsed.gunCategories;
+    }
+    Object.assign(s, body, { id: s.id });
     saveStore(); res.json(s);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1401,7 +1407,8 @@ app.post('/api/camo', async (req, res) => {
       // If price is 0/empty, uses pricePerCamo as default
       camoList: Array.isArray(camoList) ? camoList.map(parseCamoEntry) : (camoList ? String(camoList).split('\n').map(s=>s.trim()).filter(Boolean).map(parseCamoEntry) : []),
       // gunList: array of { name, emoji } — optional, if empty customer just picks camos
-      gunList: Array.isArray(gunList) ? gunList.map(parseGunEntry) : (gunList ? parseGunListInput(gunList) : []),
+      gunList: parseGunListInput(gunList).gunList,
+      gunCategories: parseGunListInput(gunList).gunCategories,
       eta: eta || '24-72 hours',
       descriptionEn: descriptionEn || '', descriptionAr: descriptionAr || '',
       images: Array.isArray(images) ? images : [],
@@ -1504,7 +1511,11 @@ app.put('/api/camo/:id', (req, res) => {
     if (!s) return res.status(404).json({ error: 'Not found' });
     const body = { ...req.body };
     if (Array.isArray(body.camoList)) body.camoList = body.camoList.map(parseCamoEntry);
-    if (Array.isArray(body.gunList)) body.gunList = body.gunList.map(parseGunEntry);
+    if (body.gunList) {
+      const parsed = parseGunListInput(body.gunList);
+      body.gunList = parsed.gunList;
+      body.gunCategories = parsed.gunCategories;
+    }
     Object.assign(s, body, { id: s.id });
     saveStore(); res.json(s);
   } catch (e) { res.status(500).json({ error: e.message }); }
