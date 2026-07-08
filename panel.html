@@ -1581,9 +1581,17 @@ function openCamoModal(editId) {
   window._camoImages = edit && edit.images ? [...edit.images] : [];
   const isEdit = !!edit;
   const v = (k, d='') => edit ? (edit[k] !== undefined && edit[k] !== null ? edit[k] : d) : d;
-  const camoListText = edit && edit.camoList && edit.camoList.length
-    ? edit.camoList.map(c => (c.emoji ? (typeof c.emoji === 'object' ? `<:${c.emoji.name}:${c.emoji.id}>` : c.emoji) + ' ' : '') + c.name + (c.price !== null && c.price !== undefined ? ':' + c.price : '')).join('\n')
-    : catalogToText(BO7_CATALOG.bo7MasteryCamos, true);
+  // Build 4 camo slots from existing camoList or empty
+  const existingCamos = edit && edit.camoList ? edit.camoList : [];
+  const slots = [];
+  for (let i = 0; i < 4; i++) {
+    const c = existingCamos[i] || {};
+    slots.push({
+      name: c.name || '',
+      price: (c.price !== null && c.price !== undefined && c.price !== '') ? c.price : '',
+      emoji: c.emoji || ''
+    });
+  }
   const gunListText = edit && edit.gunList && edit.gunList.length
     ? (edit.gunCategories && edit.gunCategories.length
         ? edit.gunCategories.map(cat => {
@@ -1593,6 +1601,12 @@ function openCamoModal(editId) {
           }).join('\n')
         : edit.gunList.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name).join('\n'))
     : '';
+  // Build 4 slot fields HTML
+  const slotsHtml = slots.map((s, i) => `
+    <div class="form-row">
+      <div class="form-field"><label>Camo ${i+1} Name</label><input id="cm_camo${i}_name" value="${escapeAttr(s.name)}" placeholder="e.g. Molten Gold"></div>
+      <div class="form-field"><label>Camo ${i+1} Price ($)</label><input id="cm_camo${i}_price" type="number" step="0.01" value="${s.price}" placeholder="e.g. 12"></div>
+    </div>`).join('');
   showModal(`
     <div class="modal-header"><h3>${isEdit?'Edit':'New'} Camo Unlock Service</h3><button class="close" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
@@ -1602,27 +1616,24 @@ function openCamoModal(editId) {
         <div class="form-field"><label>Game *</label><select id="cm_game">
           ${['Call of Duty Black Ops 7','Call of Duty Warzone','Call of Duty','Call of Duty Mobile','Valorant','Fortnite','Apex Legends','Other'].map(g=>`<option ${v('game','Call of Duty Black Ops 7')===g?'selected':''}>${g}</option>`).join('')}
         </select></div>
-        <div class="form-field"><label>Price per Camo ($) *</label><input id="cm_pricePerCamo" type="number" step="0.01" value="${v('pricePerCamo',5)}" placeholder="5.00"></div>
+        <div class="form-field"><label>Default Price per Camo ($)</label><input id="cm_pricePerCamo" type="number" step="0.01" value="${v('pricePerCamo',5)}" placeholder="5.00">
+          <p class="text-xs text-muted">Used as fallback if slot price is empty</p></div>
         <div class="form-field"><label>ETA</label><input id="cm_eta" value="${escapeAttr(v('eta','24-72 hours'))}" placeholder="24-72 hours"></div>
       </div>
+      <div class="panel-card" style="background:var(--bg-elev);border:1px solid var(--border)">
+        <h3 style="margin-bottom:12px"><i class="fa-solid fa-palette"></i> Camo Slots (fill what you want)</h3>
+        ${slotsHtml}
+        <p class="text-xs text-muted mt-2">Leave any slot empty if you don't need it. Customer picks from filled slots.</p>
+      </div>
       <div class="form-row">
-        <div class="form-field"><label>Camo Names (emoji + name:price, one per line) *</label>
-          <div class="flex gap-2 mb-2" style="flex-wrap:wrap">
-            <button type="button" class="btn btn-sm" onclick="document.getElementById('cm_camoList').value=catalogToText(BO7_CATALOG.bo7MasteryCamos, true)"><i class="fa-solid fa-star"></i> BO7 Mastery</button>
-            <button type="button" class="btn btn-sm" onclick="document.getElementById('cm_camoList').value=catalogToText(BO7_CATALOG.bo7BaseCamos, true)"><i class="fa-solid fa-palette"></i> BO7 Base Camos</button>
-            <button type="button" class="btn btn-sm" onclick="document.getElementById('cm_camoList').value=[catalogToText(BO7_CATALOG.bo7MasteryCamos, true), catalogToText(BO7_CATALOG.bo7BaseCamos, true)].join('\n')"><i class="fa-solid fa-layer-group"></i> All (Mastery+Base)</button>
-            <button type="button" class="btn btn-sm" onclick="document.getElementById('cm_camoList').value=''"><i class="fa-solid fa-eraser"></i> Clear</button>
-          </div>
-          <textarea id="cm_camoList" style="min-height:160px;font-family:'JetBrains Mono',monospace" placeholder="🟡 Gold&#10;⚪ Platinum&#10;🔴 Polyatomic:10&#10;🌟 Orion:13">${escapeHtml(camoListText)}</textarea>
-          <p class="text-xs text-muted mt-2">Format: <code>emoji CamoName:price</code> (price optional — uses default if omitted)<br>e.g. <code>🟡 Gold</code> = $5 (default), <code>🔴 Polyatomic:10</code> = $10<br>Customer multi-selects which camos to unlock. Total = sum of selected prices.</p></div>
         <div class="form-field"><label>Gun Names (optional, emoji + name, one per line)</label>
           <div class="flex gap-2 mb-2" style="flex-wrap:wrap">
             <button type="button" class="btn btn-sm" onclick="document.getElementById('cm_gunList').value=allBo7GunsAsText()"><i class="fa-solid fa-gun"></i> All BO7 Guns</button>
             ${BO7_CATALOG.gunsByCategory.map(cat=>`<button type="button" class="btn btn-sm" onclick="document.getElementById('cm_gunList').value=bo7GunsByCategoryAsText('${escapeAttr(cat.category)}')">${cat.emoji} ${escapeHtml(cat.category)}</button>`).join('')}
             <button type="button" class="btn btn-sm" onclick="document.getElementById('cm_gunList').value=''"><i class="fa-solid fa-eraser"></i> Clear</button>
           </div>
-          <textarea id="cm_gunList" style="min-height:160px;font-family:'JetBrains Mono',monospace" placeholder="🔫 M4A1&#10;🔫 AK-47&#10;💣 MP5 (leave empty = any gun)">${escapeHtml(gunListText)}</textarea>
-          <p class="text-xs text-muted mt-2">If you add guns, customer picks a gun first, then picks camos.<br>Leave empty to skip gun selection (customer just picks camos).</p></div>
+          <textarea id="cm_gunList" style="min-height:120px;font-family:'JetBrains Mono',monospace" placeholder="🔫 AK-27&#10;💨 Dravec 45 (leave empty = any gun)">${escapeHtml(gunListText)}</textarea>
+          <p class="text-xs text-muted mt-2">If you add guns, customer picks a gun first, then picks camos.<br>Leave empty to skip gun selection.</p></div>
       </div>
       <div class="form-row"><div class="form-field"><label>${isEdit?'New Cover Image (optional)':'Cover Image (optional)'}</label><input type="file" id="cm_image" accept="image/*"></div></div>
       <div class="form-row"><div class="form-field"><label>Description (EN)</label><textarea id="cm_descEn" placeholder="Unlock all camos fast and safe.">${escapeHtml(v('descriptionEn',''))}</textarea></div>
@@ -1638,18 +1649,31 @@ async function saveCamo(editId) {
   if (file) { newImage = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
   let images = window._camoImages || [];
   if (newImage) { images = [newImage, ...images.slice(0, 9)]; }
+  // Build camoList from 4 slots
+  const camoList = [];
+  for (let i = 0; i < 4; i++) {
+    const name = val('cm_camo'+i+'_name');
+    const price = val('cm_camo'+i+'_price');
+    if (name) {
+      camoList.push({
+        name: name,
+        emoji: '',
+        price: price ? parseFloat(price) : null
+      });
+    }
+  }
   const data = {
     titleEn: val('cm_titleEn'), titleAr: val('cm_titleAr'),
     game: val('cm_game'),
     pricePerCamo: parseFloat(val('cm_pricePerCamo')) || 0,
     eta: val('cm_eta') || '24-72 hours',
-    camoList: document.getElementById('cm_camoList').value.split('\n').map(s=>s.trim()).filter(Boolean),
+    camoList: camoList,
     gunList: document.getElementById('cm_gunList').value.split('\n').map(s=>s.trim()).filter(Boolean),
     descriptionEn: val('cm_descEn'), descriptionAr: val('cm_descAr'),
     images
   };
-  if (!data.titleEn || !data.pricePerCamo) return toast('error', 'Title and price per camo required');
-  if (!data.camoList.length) return toast('error', 'Add at least 1 camo name');
+  if (!data.titleEn) return toast('error', 'Title required');
+  if (camoList.length === 0) return toast('error', 'Fill at least 1 camo slot');
   try {
     if (editId) {
       await api('camo/'+editId, { method:'PUT', body: JSON.stringify(data) });
@@ -2021,7 +2045,7 @@ function renderSettings(c) {
         <div class="form-field"><label>STC Pay Name</label><input id="s_stcName" value="${escapeAttr(s.stcPay?.name||'')}"></div></div>
         <div class="form-row"><div class="form-field"><label>AlRajhi IBAN</label><input id="s_iban" value="${escapeAttr(s.alrajhi?.iban||'')}"></div>
         <div class="form-field"><label>AlRajhi Name</label><input id="s_alrajhiName" value="${escapeAttr(s.alrajhi?.name||'')}"></div></div>
-        <div class="form-row"><div class="form-field"><label>PayPal Email</label><input id="s_paypal" value="${escapeAttr(s.paypal?.email||'')}"></div>
+        <div class="form-row"><div class="form-field"><label>PayPal Link</label><input id="s_paypal" value="${escapeAttr(s.paypal?.email||'')}" placeholder="https://www.paypal.com/paypalme/yourname"></div>
         <div class="form-field"><label>PayPal Name</label><input id="s_paypalName" value="${escapeAttr(s.paypal?.name||'')}"></div></div>
       </div>
       <div class="panel-card">
