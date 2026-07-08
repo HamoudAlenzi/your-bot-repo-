@@ -429,7 +429,7 @@ a:hover{color:var(--accent-2)}
 const API = '/api';
 let SESSION = localStorage.getItem('isiam_session') || '';
 let CURRENT_PAGE = 'dashboard';
-let CACHE = { accounts:[], orders:[], payments:[], tickets:[], customers:[], pools:[], coupons:[], settings:{}, logs:[], stats:{} };
+let CACHE = { accounts:[], orders:[], payments:[], tickets:[], customers:[], pools:[], coupons:[], settings:{}, logs:[], stats:{}, digital:[], boosting:[], camo:[], customboost:[] };
 let IMAGE_QUEUE = []; // for new product modal
 
 // ===== CALL OF DUTY: BLACK OPS 7 / WARZONE CATALOGUE =====
@@ -2294,7 +2294,9 @@ function setupKeyboardShortcuts() {
       // New button — context-aware based on current page
       const newBtns = { products:'openAccountModal()', pools:'openPoolModal()', digital:'openDigitalModal()',
         boosting:'openBoostingModal()', camo:'openCamoModal()', coupons:'openCouponModal()' };
-      if (newBtns[CURRENT_PAGE]) eval(newBtns[CURRENT_PAGE]);
+      if (newBtns[CURRENT_PAGE]) {
+        try { new Function(newBtns[CURRENT_PAGE])(); } catch(e) {}
+      }
     } else if (e.key.toLowerCase() === 'r') {
       e.preventDefault();
       refreshAll(true);
@@ -2334,9 +2336,8 @@ function updateTopbarBadge() {
     count.style.display = pending > 0 ? 'block' : 'none';
   }
 }
-// Hook into refreshAll to update badge
-const _origRenderPage = renderPage;
-renderPage = function() { _origRenderPage(); updateTopbarBadge(); };
+// Update topbar badge (called from refreshAll, not from renderPage)
+// Removed _origRenderPage override to prevent potential issues
 
 </script>
 </body>
