@@ -641,7 +641,12 @@ function renderPage() {
 }
 
 // ===== REFRESH =====
-let _lastDataHash = '';
+// Background polling ONLY updates badges + bot status silently.
+// It NEVER re-renders the page (which would wipe your typing).
+// The page only re-renders when YOU click refresh or perform an action.
+let _isModalOpen = false;
+let _isTyping = false;
+
 async function refreshAll(forceRender) {
   try {
     const [stats, accounts, orders, payments, tickets, customers, pools, coupons, settings, logs, digital, boosting, camo] = await Promise.all([
@@ -649,28 +654,53 @@ async function refreshAll(forceRender) {
       api('tickets'), api('customers'), api('pools'), api('coupons'), api('settings'), api('logs'),
       api('digital'), api('boosting'), api('camo')
     ]);
-    // Check if data actually changed (compare hash)
-    const newHash = JSON.stringify({stats, accounts:accounts.length, orders:orders.length, payments:payments.length, tickets:tickets.length, customers:customers.length, pools:pools.length, coupons:coupons.length, logs:logs.length, digital:digital.length, boosting:boosting.length, camo:camo.length});
-    const dataChanged = forceRender || newHash !== _lastDataHash;
-    _lastDataHash = newHash;
-    
     CACHE = { stats, accounts, orders, payments, tickets, customers, pools, coupons, settings, logs, digital, boosting, camo };
-    // Update bot status (small DOM patch — no flash)
+    
+    // ALWAYS update bot status + badges silently (tiny DOM patches — no flash, no wipe)
     const dot = document.getElementById('botDot');
     const txt = document.getElementById('botStatusText');
     if (stats.botOnline) { dot.classList.remove('offline'); txt.textContent = 'Bot Online'; }
     else { dot.classList.add('offline'); txt.textContent = 'Bot Offline'; }
-    // Update badges (small DOM patch — no flash)
     const payBadge = document.getElementById('payBadge');
     if (stats.pendingPayments > 0) { payBadge.textContent = stats.pendingPayments; payBadge.style.display = 'inline-flex'; }
     else payBadge.style.display = 'none';
     const ticketBadge = document.getElementById('ticketBadge');
     if (stats.openTickets > 0) { ticketBadge.textContent = stats.openTickets; ticketBadge.style.display = 'inline-flex'; }
     else ticketBadge.style.display = 'none';
-    // Only re-render the page if data actually changed (prevents flashing)
-    if (dataChanged) renderPage();
+    updateTopbarBadge();
+    
+    // ONLY re-render the page if:
+    // 1. forceRender=true (user clicked refresh or performed an action), AND
+    // 2. No modal is open (don't wipe form inputs), AND
+    // 3. User is not typing in a field
+    if (forceRender && !_isModalOpen && !_isTyping) {
+      renderPage();
+    }
   } catch (e) {
     console.error('Refresh failed:', e);
+    if (e.message === 'Unauthorized') showLogin();
+  }
+}
+
+// Background poll — ONLY updates badges, NEVER re-renders the page
+async function backgroundPoll() {
+  if (_isModalOpen || _isTyping) return; // Skip entirely if user is working
+  try {
+    const stats = await api('stats');
+    CACHE.stats = stats;
+    // Silent badge updates
+    const dot = document.getElementById('botDot');
+    const txt = document.getElementById('botStatusText');
+    if (stats.botOnline) { dot.classList.remove('offline'); txt.textContent = 'Bot Online'; }
+    else { dot.classList.add('offline'); txt.textContent = 'Bot Offline'; }
+    const payBadge = document.getElementById('payBadge');
+    if (stats.pendingPayments > 0) { payBadge.textContent = stats.pendingPayments; payBadge.style.display = 'inline-flex'; }
+    else payBadge.style.display = 'none';
+    const ticketBadge = document.getElementById('ticketBadge');
+    if (stats.openTickets > 0) { ticketBadge.textContent = stats.openTickets; ticketBadge.style.display = 'inline-flex'; }
+    else ticketBadge.style.display = 'none';
+    updateTopbarBadge();
+  } catch (e) {
     if (e.message === 'Unauthorized') showLogin();
   }
 }
@@ -678,8 +708,25 @@ async function refreshAll(forceRender) {
 let POLL_TIMER = null;
 function startPolling() {
   if (POLL_TIMER) clearInterval(POLL_TIMER);
-  POLL_TIMER = setInterval(() => refreshAll(false), 15000); // 15s, no forced render
+  POLL_TIMER = setInterval(backgroundPoll, 20000); // 20s, badges only, never re-renders
 }
+
+// Track when user is typing or has a modal open — prevents ANY re-render
+document.addEventListener('focusin', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (['input','textarea','select'].includes(tag)) _isTyping = true;
+});
+document.addEventListener('focusout', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (['input','textarea','select'].includes(tag)) {
+    // Small delay in case user is tabbing between fields
+    setTimeout(() => {
+      const active = document.activeElement;
+      const activeTag = (active?.tagName || '').toLowerCase();
+      if (!['input','textarea','select'].includes(activeTag)) _isTyping = false;
+    }, 200);
+  }
+});
 
 // ===== DASHBOARD =====
 function renderDashboard(c) {
@@ -2055,8 +2102,13 @@ async function clearLogs() {
 function showModal(html) {
   document.getElementById('modal').innerHTML = html;
   document.getElementById('modalOverlay').classList.add('show');
+  _isModalOpen = true; // Prevent background re-renders while modal is open
 }
-function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+  _isModalOpen = false;
+  refreshAll(true); // Re-render page after closing modal (shows new data)
+}
 document.getElementById('modalOverlay').addEventListener('click', e => {
   if (e.target.id === 'modalOverlay') closeModal();
 });
