@@ -404,7 +404,7 @@ a:hover{color:var(--accent-2)}
         <input type="text" placeholder="Quick search..." id="globalSearch">
       </div>
       <div class="topbar-actions">
-        <button class="btn-icon" onclick="refreshAll()" title="Refresh"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn-icon" onclick="refreshAll(true)" title="Refresh"><i class="fa-solid fa-rotate"></i></button>
         <button class="btn btn-primary btn-sm" onclick="openAccountModal()"><i class="fa-solid fa-plus"></i> New Product</button>
       </div>
     </header>
@@ -559,7 +559,7 @@ function showLogin() {
 function showApp() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
-  refreshAll();
+  refreshAll(true);
   startPolling();
 }
 async function doLogin(e) {
@@ -641,27 +641,34 @@ function renderPage() {
 }
 
 // ===== REFRESH =====
-async function refreshAll() {
+let _lastDataHash = '';
+async function refreshAll(forceRender) {
   try {
     const [stats, accounts, orders, payments, tickets, customers, pools, coupons, settings, logs, digital, boosting, camo] = await Promise.all([
       api('stats'), api('accounts'), api('orders'), api('payments'),
       api('tickets'), api('customers'), api('pools'), api('coupons'), api('settings'), api('logs'),
       api('digital'), api('boosting'), api('camo')
     ]);
+    // Check if data actually changed (compare hash)
+    const newHash = JSON.stringify({stats, accounts:accounts.length, orders:orders.length, payments:payments.length, tickets:tickets.length, customers:customers.length, pools:pools.length, coupons:coupons.length, logs:logs.length, digital:digital.length, boosting:boosting.length, camo:camo.length});
+    const dataChanged = forceRender || newHash !== _lastDataHash;
+    _lastDataHash = newHash;
+    
     CACHE = { stats, accounts, orders, payments, tickets, customers, pools, coupons, settings, logs, digital, boosting, camo };
-    // Update bot status
+    // Update bot status (small DOM patch — no flash)
     const dot = document.getElementById('botDot');
     const txt = document.getElementById('botStatusText');
     if (stats.botOnline) { dot.classList.remove('offline'); txt.textContent = 'Bot Online'; }
     else { dot.classList.add('offline'); txt.textContent = 'Bot Offline'; }
-    // Update badges
+    // Update badges (small DOM patch — no flash)
     const payBadge = document.getElementById('payBadge');
     if (stats.pendingPayments > 0) { payBadge.textContent = stats.pendingPayments; payBadge.style.display = 'inline-flex'; }
     else payBadge.style.display = 'none';
     const ticketBadge = document.getElementById('ticketBadge');
     if (stats.openTickets > 0) { ticketBadge.textContent = stats.openTickets; ticketBadge.style.display = 'inline-flex'; }
     else ticketBadge.style.display = 'none';
-    renderPage();
+    // Only re-render the page if data actually changed (prevents flashing)
+    if (dataChanged) renderPage();
   } catch (e) {
     console.error('Refresh failed:', e);
     if (e.message === 'Unauthorized') showLogin();
@@ -671,7 +678,7 @@ async function refreshAll() {
 let POLL_TIMER = null;
 function startPolling() {
   if (POLL_TIMER) clearInterval(POLL_TIMER);
-  POLL_TIMER = setInterval(refreshAll, 8000);
+  POLL_TIMER = setInterval(() => refreshAll(false), 15000); // 15s, no forced render
 }
 
 // ===== DASHBOARD =====
@@ -943,17 +950,17 @@ async function saveAccount(id) {
   try {
     if (id) { await api('accounts/' + id, { method:'PUT', body: JSON.stringify(data) }); toast('success', 'Product updated'); }
     else { await api('accounts', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Product created & posted to Discord'); }
-    closeModal(); refreshAll();
+    closeModal(); refreshAll(true);
   } catch (e) { toast('error', 'Save failed: ' + e.message); }
 }
 async function deleteAccount(id) {
   if (!confirm('Delete this product? This also removes the Discord message.')) return;
-  try { await api('accounts/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(); }
+  try { await api('accounts/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 async function repostAccount(id) {
   if (!confirm('Re-post this product to Discord? Old message will be deleted.')) return;
-  try { await api('accounts/'+id+'/repost', { method:'POST' }); toast('success', 'Re-posted to Discord'); refreshAll(); }
+  try { await api('accounts/'+id+'/repost', { method:'POST' }); toast('success', 'Re-posted to Discord'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 function viewAccount(id) {
@@ -1012,7 +1019,7 @@ async function bulkImport() {
     credentials: document.getElementById('bulkCreds').value.split('\n').map(s=>s.trim()).filter(Boolean)
   };
   if (!data.credentials.length) return toast('error', 'Add at least one credential');
-  try { const r = await api('accounts/bulk', { method:'POST', body: JSON.stringify(data) }); toast('success', `Imported ${r.imported} accounts`); closeModal(); refreshAll(); }
+  try { const r = await api('accounts/bulk', { method:'POST', body: JSON.stringify(data) }); toast('success', `Imported ${r.imported} accounts`); closeModal(); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 
@@ -1070,7 +1077,7 @@ async function savePool() {
     description: val('p_desc'), image
   };
   if (!data.name || !data.price) return toast('error', 'Name and price required');
-  try { await api('pools', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Pool created & posted to Discord'); closeModal(); refreshAll(); }
+  try { await api('pools', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Pool created & posted to Discord'); closeModal(); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 function addPoolStock(id) {
@@ -1087,12 +1094,12 @@ function addPoolStock(id) {
 async function submitPoolStock(id) {
   const creds = document.getElementById('poolStockCreds').value.split('\n').map(s=>s.trim()).filter(Boolean);
   if (!creds.length) return toast('error', 'Add at least one credential');
-  try { const r = await api(`pools/${id}/stock`, { method:'POST', body: JSON.stringify({ credentials: creds }) }); toast('success', `Added ${r.added}. Total stock: ${r.total}`); closeModal(); refreshAll(); }
+  try { const r = await api(`pools/${id}/stock`, { method:'POST', body: JSON.stringify({ credentials: creds }) }); toast('success', `Added ${r.added}. Total stock: ${r.total}`); closeModal(); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 async function deletePool(id) {
   if (!confirm('Delete this pool? Stock will be lost.')) return;
-  try { await api('pools/'+id, { method:'DELETE' }); toast('success', 'Pool deleted'); refreshAll(); }
+  try { await api('pools/'+id, { method:'DELETE' }); toast('success', 'Pool deleted'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 
@@ -1173,7 +1180,7 @@ async function saveDigital() {
     image, stock
   };
   if (!data.titleEn || !data.price) return toast('error', 'Title and price required');
-  try { await api('digital', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Digital product created & posted to Discord'); closeModal(); refreshAll(); }
+  try { await api('digital', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Digital product created & posted to Discord'); closeModal(); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 function addDigitalStock(id) {
@@ -1191,12 +1198,12 @@ function addDigitalStock(id) {
 async function submitDigitalStock(id) {
   const codes = document.getElementById('digStockCodes').value.split('\n').map(s=>s.trim()).filter(Boolean);
   if (!codes.length) return toast('error', 'Add at least one code');
-  try { const r = await api(`digital/${id}/stock`, { method:'POST', body: JSON.stringify({ codes }) }); toast('success', `Added ${r.added}. Total stock: ${r.total}`); closeModal(); refreshAll(); }
+  try { const r = await api(`digital/${id}/stock`, { method:'POST', body: JSON.stringify({ codes }) }); toast('success', `Added ${r.added}. Total stock: ${r.total}`); closeModal(); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 async function deleteDigital(id) {
   if (!confirm('Delete this digital product? Stock codes will be lost.')) return;
-  try { await api('digital/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(); }
+  try { await api('digital/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 
@@ -1292,7 +1299,7 @@ function viewBoosting(id) {
 function editBoosting(id) { openBoostingModal(id); }
 async function repostBoosting(id) {
   if (!confirm('Re-post this boosting service to Discord? Old message will be deleted.')) return;
-  try { await api(`boosting/${id}/repost`, { method:'POST' }); toast('success', 'Re-posted to Discord'); refreshAll(); }
+  try { await api(`boosting/${id}/repost`, { method:'POST' }); toast('success', 'Re-posted to Discord'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 // Load BO7 guns into boosting gunList textarea (categorized format with # headers, $15/gun default)
@@ -1461,22 +1468,22 @@ async function saveBoosting(editId) {
       await api('boosting', { method:'POST', body: JSON.stringify(data) });
       toast('success', 'Boosting service created & posted to Discord');
     }
-    closeModal(); refreshAll();
+    closeModal(); refreshAll(true);
   } catch (e) { toast('error', e.message); }
 }
 async function deleteBoosting(id) {
   if (!confirm('Delete this boosting service?')) return;
-  try { await api('boosting/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(); }
+  try { await api('boosting/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 async function completeBoosting(id) {
   if (!confirm('Mark this boost complete? Will deliver completion message and close the ticket.')) return;
-  try { await api(`boosting/${id}/complete`, { method:'POST' }); toast('success', 'Boost marked complete — ticket closing'); refreshAll(); }
+  try { await api(`boosting/${id}/complete`, { method:'POST' }); toast('success', 'Boost marked complete — ticket closing'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 async function completeCamo(id) {
   if (!confirm('Mark this camo unlock complete? Will deliver completion message and close the ticket.')) return;
-  try { await api(`camo/${id}/complete`, { method:'POST' }); toast('success', 'Camo marked complete — ticket closing'); refreshAll(); }
+  try { await api(`camo/${id}/complete`, { method:'POST' }); toast('success', 'Camo marked complete — ticket closing'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 
@@ -1604,7 +1611,7 @@ async function saveCamo(editId) {
       await api('camo', { method:'POST', body: JSON.stringify(data) });
       toast('success', 'Camo service created & posted to Discord');
     }
-    closeModal(); refreshAll();
+    closeModal(); refreshAll(true);
   } catch (e) { toast('error', e.message); }
 }
 function viewCamo(id) {
@@ -1638,12 +1645,12 @@ function viewCamo(id) {
 function editCamo(id) { openCamoModal(id); }
 async function repostCamo(id) {
   if (!confirm('Re-post this camo service to Discord? Old message will be deleted.')) return;
-  try { await api(`camo/${id}/repost`, { method:'POST' }); toast('success', 'Re-posted to Discord'); refreshAll(); }
+  try { await api(`camo/${id}/repost`, { method:'POST' }); toast('success', 'Re-posted to Discord'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 async function deleteCamo(id) {
   if (!confirm('Delete this camo service?')) return;
-  try { await api('camo/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(); }
+  try { await api('camo/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 
@@ -1699,17 +1706,17 @@ async function saveCoupon() {
     expiresAt: val('c_expiresAt') ? new Date(val('c_expiresAt')).toISOString() : null
   };
   if (!data.code || !data.value) return toast('error', 'Code and value required');
-  try { await api('coupons', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Coupon created'); closeModal(); refreshAll(); }
+  try { await api('coupons', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Coupon created'); closeModal(); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 async function toggleCoupon(id) {
   const co = CACHE.coupons.find(c=>c.id===id); if (!co) return;
-  try { await api('coupons/'+id, { method:'PUT', body: JSON.stringify({ active: !co.active }) }); toast('success', 'Coupon updated'); refreshAll(); }
+  try { await api('coupons/'+id, { method:'PUT', body: JSON.stringify({ active: !co.active }) }); toast('success', 'Coupon updated'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 async function deleteCoupon(id) {
   if (!confirm('Delete this coupon?')) return;
-  try { await api('coupons/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(); }
+  try { await api('coupons/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 
@@ -1759,12 +1766,12 @@ function renderOrdersTable() {
 }
 async function deliverOrder(id) {
   if (!confirm('Mark this order as delivered & send credentials?')) return;
-  try { await api(`orders/${id}/deliver`, { method:'POST' }); toast('success', 'Delivered'); refreshAll(); }
+  try { await api(`orders/${id}/deliver`, { method:'POST' }); toast('success', 'Delivered'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 async function refundOrder(id) {
   if (!confirm('Refund this order? Account will be marked available again.')) return;
-  try { await api(`orders/${id}/refund`, { method:'POST' }); toast('success', 'Refunded'); refreshAll(); }
+  try { await api(`orders/${id}/refund`, { method:'POST' }); toast('success', 'Refunded'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 
@@ -1822,12 +1829,12 @@ async function approvePayment(id) {
   try {
     const r = await api(`payments/${id}/approve`, { method:'POST' });
     toast('success', 'Payment approved & delivered!');
-    refreshAll();
+    refreshAll(true);
   } catch (e) { toast('error', e.message); }
 }
 async function rejectPayment(id) {
   const reason = prompt('Reason for rejection (optional):') || '';
-  try { await api(`payments/${id}/reject`, { method:'POST', body: JSON.stringify({ reason }) }); toast('warn', 'Payment rejected — customer notified'); refreshAll(); }
+  try { await api(`payments/${id}/reject`, { method:'POST', body: JSON.stringify({ reason }) }); toast('warn', 'Payment rejected — customer notified'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 
@@ -1883,7 +1890,7 @@ function renderTicketsList() {
 }
 async function closeTicket(id) {
   if (!confirm('Close this ticket? Channel will be deleted.')) return;
-  try { await api(`tickets/${id}/close`, { method:'POST' }); toast('success', 'Ticket closed'); refreshAll(); }
+  try { await api(`tickets/${id}/close`, { method:'POST' }); toast('success', 'Ticket closed'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 
@@ -1916,7 +1923,7 @@ function renderCustomers(c) {
     </div>`;
 }
 async function toggleBlacklist(id, blacklist) {
-  try { await api(`customers/${id}/${blacklist?'blacklist':'unblacklist'}`, { method:'POST' }); toast('success', 'Updated'); refreshAll(); }
+  try { await api(`customers/${id}/${blacklist?'blacklist':'unblacklist'}`, { method:'POST' }); toast('success', 'Updated'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 function openBroadcastModal() {
@@ -2006,7 +2013,7 @@ async function saveSettings() {
     welcomeAr: val('s_welcomeAr'), welcomeEn: val('s_welcomeEn'),
     termsAr: val('s_termsAr'), termsEn: val('s_termsEn')
   };
-  try { await api('settings', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Settings saved'); refreshAll(); }
+  try { await api('settings', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Settings saved'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 async function restoreBackup(e) {
@@ -2016,7 +2023,7 @@ async function restoreBackup(e) {
     const text = await file.text();
     const data = JSON.parse(text);
     await api('restore', { method:'POST', body: JSON.stringify(data) });
-    toast('success', 'Backup restored'); refreshAll();
+    toast('success', 'Backup restored'); refreshAll(true);
   } catch (e) { toast('error', 'Invalid backup file'); }
 }
 
@@ -2040,7 +2047,7 @@ function renderLogs(c) {
 }
 async function clearLogs() {
   if (!confirm('Clear all logs?')) return;
-  try { await api('logs', { method:'DELETE' }); toast('success', 'Logs cleared'); refreshAll(); }
+  try { await api('logs', { method:'DELETE' }); toast('success', 'Logs cleared'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
 
@@ -2101,7 +2108,7 @@ function setupKeyboardShortcuts() {
       if (newBtns[CURRENT_PAGE]) eval(newBtns[CURRENT_PAGE]);
     } else if (e.key.toLowerCase() === 'r') {
       e.preventDefault();
-      refreshAll();
+      refreshAll(true);
       toast('info', 'Refreshed');
     } else if (e.key === '/') {
       e.preventDefault();
