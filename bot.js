@@ -1838,7 +1838,7 @@ client.on('interactionCreate', async (interaction) => {
       const options = [];
       if (pay.stcPay && pay.stcPay.number) options.push({ label: 'STC Pay', value: 'stcpay', description: 'STC Pay: ' + pay.stcPay.number, emoji: '📱' });
       if (pay.alrajhi && pay.alrajhi.iban) options.push({ label: 'AlRajhi Bank', value: 'alrajhi', description: 'تحويل بنكي الراجحي', emoji: '🏦' });
-      if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal: ' + pay.paypal.email, emoji: '💳' });
+      if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal Link', emoji: '💳' });
       if (options.length === 0) options.push({ label: 'No payment methods', value: 'none', description: 'Contact admin' });
 
       const selectMenu = new StringSelectMenuBuilder()
@@ -1939,7 +1939,7 @@ client.on('interactionCreate', async (interaction) => {
       const options = [];
       if (pay.stcPay && pay.stcPay.number) options.push({ label: 'STC Pay', value: 'stcpay', description: 'STC Pay: ' + pay.stcPay.number, emoji: '📱' });
       if (pay.alrajhi && pay.alrajhi.iban) options.push({ label: 'AlRajhi Bank', value: 'alrajhi', description: 'الراجحي', emoji: '🏦' });
-      if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal: ' + pay.paypal.email, emoji: '💳' });
+      if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal Link', emoji: '💳' });
       if (options.length === 0) options.push({ label: 'No payment methods', value: 'none', description: 'Contact admin' });
 
       const selectMenu = new StringSelectMenuBuilder()
@@ -2030,7 +2030,7 @@ client.on('interactionCreate', async (interaction) => {
       const options = [];
       if (pay.stcPay && pay.stcPay.number) options.push({ label: 'STC Pay', value: 'stcpay', description: 'STC Pay: ' + pay.stcPay.number, emoji: '📱' });
       if (pay.alrajhi && pay.alrajhi.iban) options.push({ label: 'AlRajhi Bank', value: 'alrajhi', description: 'الراجحي', emoji: '🏦' });
-      if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal: ' + pay.paypal.email, emoji: '💳' });
+      if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal Link', emoji: '💳' });
       if (options.length === 0) options.push({ label: 'No payment methods', value: 'none', description: 'Contact admin' });
 
       const selectMenu = new StringSelectMenuBuilder()
@@ -2406,7 +2406,7 @@ client.on('interactionCreate', async (interaction) => {
       let textInfo = '';
       if (method === 'stcpay') textInfo = `📱 **STC Pay**\nالرقم: \`${pay.stcPay.number}\`\nالاسم: *${pay.stcPay.name || '-'}*`;
       if (method === 'alrajhi') textInfo = `🏦 **AlRajhi Bank**\nIBAN: \`${pay.alrajhi.iban}\`\nالاسم: *${pay.alrajhi.name || '-'}*`;
-      if (method === 'paypal') textInfo = `💳 **PayPal**\nEmail: \`${pay.paypal.email}\``;
+      if (method === 'paypal') textInfo = `💳 **PayPal**\nرابط: ${pay.paypal.email}`;
 
       const payEmbed = new EmbedBuilder()
         .setColor(0xf0b232)
@@ -2442,7 +2442,7 @@ client.on('interactionCreate', async (interaction) => {
       let textInfo = '';
       if (method === 'stcpay') textInfo = `📱 **STC Pay**\nالرقم: \`${pay.stcPay.number}\`\nالاسم: *${pay.stcPay.name || '-'}*`;
       if (method === 'alrajhi') textInfo = `🏦 **AlRajhi Bank**\nIBAN: \`${pay.alrajhi.iban}\`\nالاسم: *${pay.alrajhi.name || '-'}*`;
-      if (method === 'paypal') textInfo = `💳 **PayPal**\nEmail: \`${pay.paypal.email}\``;
+      if (method === 'paypal') textInfo = `💳 **PayPal**\nرابط: ${pay.paypal.email}`;
 
       const payEmbed = new EmbedBuilder()
         .setColor(0xf0b232)
@@ -2479,7 +2479,7 @@ client.on('interactionCreate', async (interaction) => {
       let textInfo = '';
       if (method === 'stcpay') textInfo = `📱 **STC Pay**\nالرقم: \`${pay.stcPay.number}\`\nالاسم: *${pay.stcPay.name || '-'}*`;
       if (method === 'alrajhi') textInfo = `🏦 **AlRajhi Bank**\nIBAN: \`${pay.alrajhi.iban}\`\nالاسم: *${pay.alrajhi.name || '-'}*`;
-      if (method === 'paypal') textInfo = `💳 **PayPal**\nEmail: \`${pay.paypal.email}\``;
+      if (method === 'paypal') textInfo = `💳 **PayPal**\nرابط: ${pay.paypal.email}`;
 
       const payEmbed = new EmbedBuilder()
         .setColor(0xf0b232)
@@ -2517,7 +2517,7 @@ client.on('interactionCreate', async (interaction) => {
       let textInfo = '';
       if (method === 'stcpay') textInfo = `📱 **STC Pay**\nالرقم: \`${pay.stcPay.number}\`\nالاسم: *${pay.stcPay.name || '-'}*`;
       if (method === 'alrajhi') textInfo = `🏦 **AlRajhi Bank**\nIBAN: \`${pay.alrajhi.iban}\`\nالاسم: *${pay.alrajhi.name || '-'}*`;
-      if (method === 'paypal') textInfo = `💳 **PayPal**\nEmail: \`${pay.paypal.email}\``;
+      if (method === 'paypal') textInfo = `💳 **PayPal**\nرابط: ${pay.paypal.email}`;
 
       const payEmbed = new EmbedBuilder()
         .setColor(0xf0b232)
@@ -2556,7 +2556,7 @@ client.on('interactionCreate', async (interaction) => {
       let textInfo = '';
       if (method === 'stcpay') textInfo = `📱 **STC Pay**\nالرقم: \`${pay.stcPay.number}\`\nالاسم: *${pay.stcPay.name || '-'}*`;
       if (method === 'alrajhi') textInfo = `🏦 **AlRajhi Bank**\nIBAN: \`${pay.alrajhi.iban}\`\nالاسم: *${pay.alrajhi.name || '-'}*`;
-      if (method === 'paypal') textInfo = `💳 **PayPal**\nEmail: \`${pay.paypal.email}\``;
+      if (method === 'paypal') textInfo = `💳 **PayPal**\nرابط: ${pay.paypal.email}`;
 
       const payEmbed = new EmbedBuilder()
         .setColor(0xf0b232)
@@ -2805,7 +2805,7 @@ async function createCamoTicket(interaction, camo, gunIdx, selectedCamos, price)
   const options = [];
   if (pay.stcPay && pay.stcPay.number) options.push({ label: 'STC Pay', value: 'stcpay', description: 'STC Pay: ' + pay.stcPay.number, emoji: '📱' });
   if (pay.alrajhi && pay.alrajhi.iban) options.push({ label: 'AlRajhi Bank', value: 'alrajhi', description: 'الراجحي', emoji: '🏦' });
-  if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal: ' + pay.paypal.email, emoji: '💳' });
+  if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal Link', emoji: '💳' });
   if (options.length === 0) options.push({ label: 'No payment methods', value: 'none', description: 'Contact admin' });
 
   const selectMenu = new StringSelectMenuBuilder().setCustomId('paymethodcamo_' + camo.id + '_' + ticketId).setPlaceholder('اختر طريقة الدفع / Choose payment').addOptions(options);
@@ -2903,7 +2903,7 @@ async function createBoostingTicket(interaction, boost, choices, price) {
   const options = [];
   if (pay.stcPay && pay.stcPay.number) options.push({ label: 'STC Pay', value: 'stcpay', description: 'STC Pay: ' + pay.stcPay.number, emoji: '📱' });
   if (pay.alrajhi && pay.alrajhi.iban) options.push({ label: 'AlRajhi Bank', value: 'alrajhi', description: 'الراجحي', emoji: '🏦' });
-  if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal: ' + pay.paypal.email, emoji: '💳' });
+  if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal Link', emoji: '💳' });
   if (options.length === 0) options.push({ label: 'No payment methods', value: 'none', description: 'Contact admin' });
 
   const selectMenu = new StringSelectMenuBuilder().setCustomId('paymethodboost_' + boost.id + '_' + ticketId).setPlaceholder('اختر طريقة الدفع / Choose payment').addOptions(options);
