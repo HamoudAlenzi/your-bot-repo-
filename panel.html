@@ -361,7 +361,6 @@ a:hover{color:var(--accent-2)}
         <div class="nav-item" data-page="pools"><i class="fa-solid fa-bolt"></i> Auto-Delivery</div>
         <div class="nav-item" data-page="digital"><i class="fa-solid fa-ticket"></i> Digital Products</div>
         <div class="nav-item" data-page="boosting"><i class="fa-solid fa-rocket"></i> Boosting Services</div>
-        <div class="nav-item" data-page="boostSlots"><i class="fa-solid fa-bolt"></i> BOOSTING</div>
         <div class="nav-item" data-page="camo"><i class="fa-solid fa-palette"></i> Camo Unlock</div>
         <div class="nav-item" data-page="coupons"><i class="fa-solid fa-tag"></i> Coupons</div>
       </div>
@@ -629,13 +628,13 @@ document.querySelectorAll('.nav-item').forEach(item => {
 
 function renderPage() {
   const titles = { dashboard:'Dashboard', products:'Products', pools:'Auto-Delivery Pools',
-    digital:'Digital Products', boosting:'Boosting Services', boostSlots:'BOOSTING', camo:'Camo Unlock', coupons:'Coupons',
+    digital:'Digital Products', boosting:'Boosting Services', camo:'Camo Unlock', coupons:'Coupons',
     orders:'Orders', payments:'Payment Requests', tickets:'Support Tickets', customers:'Customers',
     settings:'Settings', logs:'Activity Logs' };
   document.getElementById('pageTitle').textContent = titles[CURRENT_PAGE] || 'Dashboard';
   const content = document.getElementById('content');
   const renderers = { dashboard:renderDashboard, products:renderProducts, pools:renderPools,
-    digital:renderDigital, boosting:renderBoosting, boostSlots:renderBoostSlots, camo:renderCamo, coupons:renderCoupons,
+    digital:renderDigital, boosting:renderBoosting, camo:renderCamo, coupons:renderCoupons,
     orders:renderOrders, payments:renderPayments, tickets:renderTickets, customers:renderCustomers,
     settings:renderSettings, logs:renderLogs };
   (renderers[CURRENT_PAGE] || renderDashboard)(content);
@@ -1260,7 +1259,44 @@ async function deleteDigital(id) {
 // ===== BOOSTING SERVICES =====
 function renderBoosting(c) {
   const services = CACHE.boosting || [];
+  const newBoost = CACHE.boostSlots || [];
   const cur = CACHE.settings.currency || '$';
+  // Build NEW BOOSTING section HTML
+  const newBoostSection = `
+    <div class="panel-card mt-4" style="border-color:var(--gold);border-width:1px">
+      <div class="page-header" style="margin-bottom:12px">
+        <div><h2 style="color:var(--gold)"><i class="fa-solid fa-bolt"></i> NEW BOOSTING</h2><p>${newBoost.length} services • Customizable boosting with up to 5 slots</p></div>
+        <button class="btn btn-primary" style="background:var(--gold);color:#000" onclick="openBoostSlotModal()"><i class="fa-solid fa-plus"></i> New Boosting Slot</button>
+      </div>
+      ${newBoost.length === 0 ? '<div class="empty" style="background:var(--bg-card)"><i class="fa-solid fa-bolt"></i><p>No NEW BOOSTING services yet. Create custom boosting options with up to 5 slots.</p><button class="btn btn-primary" style="background:var(--gold);color:#000" onclick="openBoostSlotModal()"><i class="fa-solid fa-plus"></i> Create Boosting Slot</button></div>' :
+        `<div class="account-grid">${newBoost.map(s => {
+          const slotsPreview = s.slots && s.slots.length > 0 ? s.slots.slice(0, 3).map(sl => escapeHtml(sl.name)).join(', ') + (s.slots.length > 3 ? ' +' + (s.slots.length - 3) : '') : 'No slots';
+          return `
+          <div class="account-card" style="border-color:var(--gold-dim)">
+            <div class="thumb">
+              ${s.images&&s.images[0] ? `<img src="${s.images[0]}">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--gold);font-size:32px"><i class="fa-solid fa-bolt"></i></div>`}
+              <div class="game-tag" style="background:var(--gold)">${escapeHtml(s.game)}</div>
+              <div style="position:absolute;top:8px;right:8px"><span class="badge available" style="background:var(--gold-dim);color:var(--gold)">${s.slots?s.slots.length:0} slots</span></div>
+            </div>
+            <div class="body">
+              <h4>${escapeHtml(s.titleEn)}</h4>
+              <div class="sub">${escapeHtml(s.titleAr||'')}</div>
+              <div class="price" style="color:var(--gold)">${cur}${s.price.toFixed(2)} <span class="text-xs text-muted" style="font-weight:400">starting</span></div>
+              <div class="meta">
+                <span><i class="fa-solid fa-bolt"></i> ${slotsPreview}</span>
+                <span><i class="fa-solid fa-clock"></i> ${escapeHtml(s.eta||'')}</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn btn-sm" onclick="viewBoostSlot(${s.id})" title="View"><i class="fa-solid fa-eye"></i></button>
+              <button class="btn btn-sm" onclick="editBoostSlot(${s.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
+              <button class="btn btn-sm" onclick="repostBoostSlot(${s.id})" title="Re-post to Discord"><i class="fa-solid fa-rotate"></i></button>
+              <button class="btn btn-sm btn-danger" onclick="deleteBoostSlot(${s.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          </div>`;
+        }).join('')}</div>`}
+    </div>`;
+
   c.innerHTML = `
     <div class="page active">
       <div class="page-header">
@@ -1312,6 +1348,7 @@ function renderBoosting(c) {
             </div>
           </div>`;
         }).join('')}</div>`}
+      ${newBoostSection}
     </div>`;
 }
 function viewBoosting(id) {
@@ -1728,45 +1765,7 @@ async function deleteCamo(id) {
   catch (e) { toast('error', e.message); }
 }
 
-// ===== BOOSTING SLOTS =====
-function renderBoostSlots(c) {
-  const services = CACHE.boostSlots || [];
-  const cur = CACHE.settings.currency || '$';
-  c.innerHTML = `
-    <div class="page active">
-      <div class="page-header">
-        <div><h2>BOOSTING</h2><p>${services.length} services • Customizable boosting with up to 5 slots</p></div>
-        <button class="btn btn-primary" onclick="openBoostSlotModal()"><i class="fa-solid fa-plus"></i> New Boosting Service</button>
-      </div>
-      ${services.length === 0 ? '<div class="empty"><i class="fa-solid fa-bolt"></i><p>No boosting services yet. Create custom boosting options with up to 5 slots.</p><button class="btn btn-primary" onclick="openBoostSlotModal()"><i class="fa-solid fa-plus"></i> Create Boosting Service</button></div>' :
-        `<div class="account-grid">${services.map(s => {
-          const slotsPreview = s.slots && s.slots.length > 0 ? s.slots.slice(0, 3).map(sl => escapeHtml(sl.name)).join(', ') + (s.slots.length > 3 ? ' +' + (s.slots.length - 3) : '') : 'No slots';
-          return `
-          <div class="account-card">
-            <div class="thumb">
-              ${s.images&&s.images[0] ? `<img src="${s.images[0]}">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--gold);font-size:32px"><i class="fa-solid fa-bolt"></i></div>`}
-              <div class="game-tag">${escapeHtml(s.game)}</div>
-              <div style="position:absolute;top:8px;right:8px"><span class="badge available">${s.slots?s.slots.length:0} slots</span></div>
-            </div>
-            <div class="body">
-              <h4>${escapeHtml(s.titleEn)}</h4>
-              <div class="sub">${escapeHtml(s.titleAr||'')}</div>
-              <div class="price">${cur}${s.price.toFixed(2)} <span class="text-xs text-muted" style="font-weight:400">starting</span></div>
-              <div class="meta">
-                <span><i class="fa-solid fa-bolt"></i> ${slotsPreview}</span>
-                <span><i class="fa-solid fa-clock"></i> ${escapeHtml(s.eta||'')}</span>
-              </div>
-            </div>
-            <div class="actions">
-              <button class="btn btn-sm" onclick="viewBoostSlot(${s.id})" title="View"><i class="fa-solid fa-eye"></i></button>
-              <button class="btn btn-sm" onclick="editBoostSlot(${s.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
-              <button class="btn btn-sm" onclick="repostBoostSlot(${s.id})" title="Re-post to Discord"><i class="fa-solid fa-rotate"></i></button>
-              <button class="btn btn-sm btn-danger" onclick="deleteBoostSlot(${s.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
-            </div>
-          </div>`;
-        }).join('')}</div>`}
-    </div>`;
-}
+// ===== NEW BOOSTING SLOTS (sub-section within Boosting Services) =====
 function viewBoostSlot(id) {
   const s = CACHE.boostSlots.find(x => x.id === id); if (!s) return;
   const cur = CACHE.settings.currency || '$';
@@ -2334,7 +2333,7 @@ function setupKeyboardShortcuts() {
       e.preventDefault();
       // New button — context-aware based on current page
       const newBtns = { products:'openAccountModal()', pools:'openPoolModal()', digital:'openDigitalModal()',
-        boosting:'openBoostingModal()', boostSlots:'openBoostSlotModal()', camo:'openCamoModal()', coupons:'openCouponModal()' };
+        boosting:'openBoostingModal()', camo:'openCamoModal()', coupons:'openCouponModal()' };
       if (newBtns[CURRENT_PAGE]) eval(newBtns[CURRENT_PAGE]);
     } else if (e.key.toLowerCase() === 'r') {
       e.preventDefault();
