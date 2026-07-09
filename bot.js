@@ -42,8 +42,8 @@ const DEFAULT_STORE = {
   coupons: [],
   digitalProducts: [],   // PSN cards, Xbox subs, Netflix, CD keys — instant code delivery
   boostingServices: [],  // CoD/Warzone rank, prestige, gun level boosting — service-based
-  camoServices: [],      // CoD/Warzone weapon camo unlock
-  customBoosts: [],      // NEW BOOSTING — admin names the boost + price (5 slots) — admin adds camo names, customer picks
+  camoServices: [],      // CoD/Warzone weapon camo unlock — admin adds camo names, customer picks
+  boostSlots: [],        // Customizable boosting slots — admin defines up to 5 options per service
   paymentRequests: [],
   tickets: [],
   logs: [],
@@ -52,8 +52,9 @@ const DEFAULT_STORE = {
     currency: '$',
     accountsChannelId: '',
     digitalChannelId: '',     // channel for Digital Products posts (fallback: accountsChannelId)
-    boostingChannelId: '',   // channel for Boosting Services    customBoostingChannelId: '', // channel for NEW BOOSTING section posts (fallback: accountsChannelId)
+    boostingChannelId: '',   // channel for Boosting Services posts (fallback: accountsChannelId)
     camoChannelId: '',       // channel for Camo Unlock posts (fallback: accountsChannelId)
+    boostSlotChannelId: '',   // channel for Boosting Slots posts (fallback: accountsChannelId)
     ticketCategoryId: '',
     logChannelId: '',
     ownerId: '',
@@ -215,7 +216,7 @@ app.get('/api/stats', (req, res) => {
       boostingServices: store.boostingServices.length,
       activeBoosts: store.tickets.filter(t => t.status === 'boosting_in_progress').length,
       camoServices: store.camoServices.length,
-      customBoosts: store.customBoosts.length,
+      boostSlots: store.boostSlots.length,
       botOnline: client.isReady(),
       // Sales chart (last 14 days)
       salesChart: buildSalesChart(delivered, 14),
@@ -511,7 +512,6 @@ app.post('/api/payments/:id/approve', async (req, res) => {
     let isBoosting = !!pr.boostingServiceId;
     let isDigital = !!pr.digitalProductId;
     let isCamo = !!pr.camoServiceId;
-    let isCustomBoost = !!pr.customBoostId;
 
     // POOL purchase — pull from pool stock
     if (pr.poolId) {
@@ -549,13 +549,13 @@ app.post('/api/payments/:id/approve', async (req, res) => {
     const finalAmount = pr.discountedAmount || pr.amount;
 
     // For boosting/camo: order is 'In Progress', not 'Delivered' yet
-    const orderStatus = (isBoosting || isCamo || isCustomBoost) ? 'In Progress' : 'Delivered';
+    const orderStatus = (isBoosting || isCamo) ? 'In Progress' : 'Delivered';
     const order = {
       id: 'ORD-' + String(1000 + store.orders.length + 1),
       cust: pr.userName, custId: pr.userId,
       item: pr.accountTitle, itemId: String(pr.accountId),
       poolId: pr.poolId || null, digitalProductId: pr.digitalProductId || null,
-      boostingServiceId: pr.boostingServiceId || null, camoServiceId: pr.camoServiceId || null, customBoostId: pr.customBoostId || null,
+      boostingServiceId: pr.boostingServiceId || null, camoServiceId: pr.camoServiceId || null,
       amount: finalAmount, originalAmount: pr.amount, couponCode: pr.couponCode || null,
       status: orderStatus,
       paymentMethod: pr.method, date: new Date().toISOString().slice(0, 16).replace('T', ' '),
@@ -607,7 +607,7 @@ app.post('/api/payments/:id/approve', async (req, res) => {
             )
             .setFooter({ text: storeName + ' • احتفظ بهذه الرسالة' })
             .setTimestamp();
-        } else if (isBoosting || isCustomBoost) {
+        } else if (isBoosting) {
           dmEmbed = new EmbedBuilder()
             .setColor(brandColor)
             .setTitle('🚀 تم تأكيد طلبك — البوست قيد التنفيذ')
@@ -703,7 +703,7 @@ app.post('/api/payments/:id/approve', async (req, res) => {
             .setTimestamp();
           await ticketChannel.send({ embeds: [deliverEmbed] });
           addLog('INFO', `Camo ticket ${ticket.id} now in progress for ${pr.userName}`);
-        } else if (isBoosting || isCustomBoost) {
+        } else if (isBoosting) {
           // BOOSTING: payment confirmed, ask for account credentials
           ticket.status = 'boosting_in_progress';
           deliverEmbed = new EmbedBuilder()
@@ -1484,7 +1484,6 @@ async function postCamoToDiscord(channel, service) {
       { name: '⏱️ ETA', value: service.eta, inline: true },
       { name: '💰 Starting from', value: '```fix\n' + cur + service.pricePerCamo.toFixed(2) + ' per camo```', inline: false }
     );
-  // Clean embed — camo list NOT shown, customer discovers when clicking Order
   // Show gun list if defined
   if (service.gunList && service.gunList.length > 0) {
     const gunsText = service.gunList.slice(0, 20).map(g => {
@@ -1635,121 +1634,134 @@ app.post('/api/camo/:id/complete', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ===== NEW BOOSTING (admin names the boost + price, 5 slots, full control) =====
-app.get('/api/customboost', (req, res) => { try { res.json(store.customBoosts); } catch (e) { res.status(500).json({ error: e.message }); } });
+// ===== BOOSTING SLOTS (customizable 5-slot boosting services) =====
+app.get('/api/boost-slots', (req, res) => { try { res.json(store.boostSlots); } catch (e) { res.status(500).json({ error: e.message }); } });
 
-app.post('/api/customboost', async (req, res) => {
+app.post('/api/boost-slots', async (req, res) => {
   try {
-    const { titleEn, titleAr, game, eta, descriptionEn, descriptionAr, images, slots } = req.body;
+    const { titleEn, titleAr, game, price, slots, eta, descriptionEn, descriptionAr, images } = req.body;
     if (!titleEn) return res.status(400).json({ error: 'Title required' });
-    const boost = {
+    const service = {
       id: genId(), titleEn, titleAr: titleAr || '',
-      game: game || 'Call of Duty Black Ops 7',
+      game: game || 'Call of Duty',
+      price: parseFloat(price) || 0,
+      slots: Array.isArray(slots) ? slots.filter(s => s.name).map(s => ({ name: s.name, price: parseFloat(s.price) || 0 })) : [],
       eta: eta || '24-48 hours',
       descriptionEn: descriptionEn || '', descriptionAr: descriptionAr || '',
       images: Array.isArray(images) ? images : [],
-      slots: Array.isArray(slots) ? slots.filter(s => s.name).slice(0, 5) : [],
       status: 'active',
       createdAt: new Date().toISOString(), discordMessageIds: []
     };
-    store.customBoosts.push(boost);
+    store.boostSlots.push(service);
     saveStore();
-    const channelId = store.settings.customBoostingChannelId || store.settings.accountsChannelId;
+    const channelId = store.settings.boostSlotChannelId || store.settings.accountsChannelId;
     if (channelId && client.isReady()) {
       const channel = client.channels.cache.get(channelId);
-      if (channel) await postCustomBoostToDiscord(channel, boost).catch(e => addLog('ERROR', 'Custom boost post failed: ' + e.message));
+      if (channel) await postBoostSlotToDiscord(channel, service).catch(e => addLog('ERROR', 'Boost Slot post failed: ' + e.message));
     }
-    addLog('INFO', `Custom boost created: ${titleEn} (${boost.slots.length} slots)`);
-    res.json(boost);
+    addLog('INFO', `Boosting Slot service created: ${titleEn}`);
+    res.json(service);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-async function postCustomBoostToDiscord(channel, boost) {
-  const brandColor = store.settings.color || 0x9b59ff;
-  const cur = store.settings.currency;
-  const mainEmbed = new EmbedBuilder()
-    .setColor(brandColor)
-    .setTitle('⚡ ' + boost.titleEn)
-    .setDescription(
-      (boost.titleAr ? '**' + boost.titleAr + '**\n' : '') +
-      '```yaml\n' + boost.game + '```\n' +
-      (boost.descriptionEn ? '📋 ' + boost.descriptionEn + '\n' : '') +
-      (boost.descriptionAr ? '📋 ' + boost.descriptionAr + '\n' : '')
-    )
-    .addFields(
-      { name: '🎮 Game', value: boost.game, inline: true },
-      { name: '⏱️ ETA', value: boost.eta, inline: true }
-    );
-  if (boost.slots && boost.slots.length > 0) {
-    const prices = boost.slots.filter(s => s.price > 0).map(s => s.price);
-    if (prices.length > 0) {
-      mainEmbed.addFields({ name: '💰 يبدأ من', value: '```fix\n' + cur + Math.min(...prices).toFixed(2) + '```', inline: false });
-    }
-  }
-  mainEmbed.setFooter({ text: store.settings.storeName + ' • اضغط اطلب الآن للاختيار' });
-  mainEmbed.setTimestamp();
-  const files = [];
-  const embeds = [mainEmbed];
-  const allImages = boost.images || [];
-  if (allImages.length === 0) {
-    const imgPath = path.join(__dirname, 'images', 'rank-boost.png');
-    if (fs.existsSync(imgPath)) {
-      const fileName = 'cboost_' + boost.id + '_default.png';
-      files.push(new AttachmentBuilder(fs.readFileSync(imgPath), { name: fileName }));
-      mainEmbed.setImage('attachment://' + fileName);
-    }
-  }
-  for (let i = 0; i < allImages.length; i++) {
-    const parsed = base64ToBuffer(allImages[i]);
-    if (!parsed) continue;
-    const fileName = 'cboost_' + boost.id + '_' + (i + 1) + '.jpg';
-    files.push(new AttachmentBuilder(parsed.buffer, { name: fileName }));
-    mainEmbed.setImage('attachment://' + fileName);
-  }
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('ordercb_' + boost.id).setLabel('اطلب الآن / Order Now').setStyle(ButtonStyle.Success).setEmoji('⚡')
-  );
-  const msg = await channel.send({ embeds, components: [row], files });
-  boost.discordMessageIds.push(msg.id);
-  saveStore();
-}
-
-app.put('/api/customboost/:id', (req, res) => {
+app.put('/api/boost-slots/:id', (req, res) => {
   try {
-    const s = store.customBoosts.find(x => x.id === parseInt(req.params.id));
+    const s = store.boostSlots.find(x => x.id === parseInt(req.params.id));
     if (!s) return res.status(404).json({ error: 'Not found' });
-    Object.assign(s, req.body, { id: s.id });
+    const body = { ...req.body };
+    if (Array.isArray(body.slots)) body.slots = body.slots.filter(sl => sl.name).map(sl => ({ name: sl.name, price: parseFloat(sl.price) || 0 }));
+    Object.assign(s, body, { id: s.id });
     saveStore(); res.json(s);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/customboost/:id', async (req, res) => {
+app.delete('/api/boost-slots/:id', async (req, res) => {
   try {
-    const s = store.customBoosts.find(x => x.id === parseInt(req.params.id));
+    const s = store.boostSlots.find(x => x.id === parseInt(req.params.id));
     if (!s) return res.status(404).json({ error: 'Not found' });
     if (s.discordMessageIds && s.discordMessageIds.length && client.isReady()) {
-      const ch = client.channels.cache.get(store.settings.customBoostingChannelId || store.settings.accountsChannelId);
+      const channelId = store.settings.boostSlotChannelId || store.settings.accountsChannelId;
+      const ch = client.channels.cache.get(channelId);
       if (ch) for (const mid of s.discordMessageIds) { try { await ch.messages.delete(mid); } catch(e){} }
     }
-    store.customBoosts = store.customBoosts.filter(x => x.id !== parseInt(req.params.id));
+    store.boostSlots = store.boostSlots.filter(x => x.id !== parseInt(req.params.id));
     saveStore(); res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/customboost/:id/repost', async (req, res) => {
+app.post('/api/boost-slots/:id/repost', async (req, res) => {
   try {
-    const s = store.customBoosts.find(x => x.id === parseInt(req.params.id));
+    const s = store.boostSlots.find(x => x.id === parseInt(req.params.id));
     if (!s) return res.status(404).json({ error: 'Not found' });
-    const channelId = store.settings.customBoostingChannelId || store.settings.accountsChannelId;
-    if (!channelId || !client.isReady()) return res.status(400).json({ error: 'Bot not ready' });
+    const channelId = store.settings.boostSlotChannelId || store.settings.accountsChannelId;
+    if (!channelId || !client.isReady()) return res.status(400).json({ error: 'Bot not ready or channel not set' });
     const ch = client.channels.cache.get(channelId);
     if (!ch) return res.status(400).json({ error: 'Channel not found' });
     for (const mid of s.discordMessageIds) { try { await ch.messages.delete(mid); } catch(e){} }
     s.discordMessageIds = [];
-    await postCustomBoostToDiscord(ch, s);
-    saveStore(); res.json({ success: true });
+    await postBoostSlotToDiscord(ch, s);
+    saveStore();
+    addLog('INFO', `Boost Slot service ${s.id} re-posted to Discord`);
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+async function postBoostSlotToDiscord(channel, service) {
+  const brandColor = store.settings.color || 0x9b59ff;
+  const cur = store.settings.currency;
+  const allImages = service.images || [];
+  const mainEmbed = new EmbedBuilder()
+    .setColor(brandColor)
+    .setTitle('⚡ ' + service.titleEn)
+    .setDescription(
+      (service.titleAr ? '**' + service.titleAr + '**\n' : '') +
+      '```yaml\n' + service.game + ' • boosting```\n' +
+      (service.descriptionEn ? '📋 ' + service.descriptionEn + '\n' : '') +
+      (service.descriptionAr ? '📋 ' + service.descriptionAr + '\n' : '')
+    )
+    .addFields(
+      { name: '🎮 Game', value: service.game, inline: true },
+      { name: '⏱️ ETA', value: service.eta, inline: true },
+      { name: '💰 Starting from', value: '```fix\n' + cur + service.price.toFixed(2) + '```', inline: false }
+    );
+  // Show slots
+  if (service.slots && service.slots.length > 0) {
+    const slotsText = service.slots.map(s => '`' + s.name + '` (' + cur + s.price.toFixed(2) + ')').join('\n');
+    mainEmbed.addFields({ name: '⚡ Available Options', value: slotsText, inline: false });
+  }
+  mainEmbed.setFooter({ text: store.settings.storeName + ' • Boosting • ID: ' + service.id });
+  mainEmbed.setTimestamp();
+
+  const files = [];
+  const embeds = [mainEmbed];
+  let imgCount = 0;
+
+  if (allImages.length === 0) {
+    const imgPath = path.join(__dirname, 'images', 'boosting.png');
+    if (fs.existsSync(imgPath)) {
+      const fileName = 'boost_' + service.id + '_default.png';
+      files.push(new AttachmentBuilder(fs.readFileSync(imgPath), { name: fileName }));
+      mainEmbed.setImage('attachment://' + fileName);
+      imgCount = 1;
+    }
+  }
+
+  for (let i = 0; i < allImages.length; i++) {
+    const parsed = base64ToBuffer(allImages[i]);
+    if (!parsed) continue;
+    const fileName = 'boost_' + service.id + '_' + (i + 1) + '.jpg';
+    files.push(new AttachmentBuilder(parsed.buffer, { name: fileName }));
+    imgCount++;
+    if (imgCount === 1) mainEmbed.setImage('attachment://' + fileName);
+    else embeds.push(new EmbedBuilder().setColor(brandColor).setImage('attachment://' + fileName));
+  }
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('orderboostslot_' + service.id).setLabel('اطلب الآن / Order Boosting').setStyle(ButtonStyle.Success).setEmoji('⚡')
+  );
+  const msg = await channel.send({ embeds, components: [row], files });
+  service.discordMessageIds.push(msg.id);
+  saveStore();
+}
 
 // ===== COUPONS =====
 app.get('/api/coupons', (req, res) => { try { res.json(store.coupons); } catch (e) { res.status(500).json({ error: e.message }); } });
@@ -2496,56 +2508,13 @@ client.on('interactionCreate', async (interaction) => {
       return await createBoostingTicket(interaction, boost, { type: 'gun_level', gunName: gunLabel, fromLevel: 'current', toLevel: 'MAX', levels: 'MAX' }, price);
     }
 
-    // ---- NEW BOOSTING: customer clicks Order → show slot select ----
-    if (interaction.isButton() && interaction.customId.startsWith('ordercb_')) {
-      const boostId = parseInt(interaction.customId.split('_')[1]);
-      const boost = store.customBoosts.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const existing = store.tickets.find(t => t.userId === interaction.user.id && t.customBoostId === boostId && t.status !== 'closed');
-      if (existing) { const ch = client.channels.cache.get(existing.channelId); if (ch) return interaction.reply({ content: `🎫 لديك تذكرة: <#${existing.channelId}>`, ephemeral: true }); }
-      if (!boost.slots || boost.slots.length === 0) return interaction.reply({ content: '❌ No boosts available.', ephemeral: true });
-      const cur = store.settings.currency;
-      const options = boost.slots.slice(0, 25).map((s, i) => ({ label: s.name.slice(0, 100), value: String(i), description: cur + (s.price || 0).toFixed(2), emoji: '⚡' }));
-      const select = new StringSelectMenuBuilder().setCustomId('cbslot_' + boostId).setPlaceholder('اختر الخدمة / Select boost').addOptions(options);
-      const embed = new EmbedBuilder().setColor(store.settings.color || 0x9b59ff).setTitle('⚡ ' + boost.titleEn).setDescription(`**اختر الخدمة**\n\n📋 المتاحة: ${boost.slots.length}\n⏱️ المدة: \`${boost.eta}\`\n\nاختر من القائمة 👇`).setFooter({ text: store.settings.storeName });
-      return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
-    }
-    // ---- NEW BOOSTING: customer selected slot → confirm ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('cbslot_')) {
-      const boostId = parseInt(interaction.customId.split('_')[1]);
-      const boost = store.customBoosts.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const slotIdx = parseInt(interaction.values[0]);
-      const slot = boost.slots[slotIdx];
-      if (!slot) return interaction.reply({ content: '❌ Invalid.', ephemeral: true });
-      const cur = store.settings.currency;
-      const price = slot.price || 0;
-      const embed = new EmbedBuilder().setColor(store.settings.color || 0x9b59ff).setTitle('✅ تأكيد الطلب').setDescription(`**${boost.titleEn}**\n\n⚡ الخدمة: \`${slot.name}\`\n💰 السعر: \`${cur}${price.toFixed(2)}\`\n⏱️ المدة: \`${boost.eta}\`\n\nاضغط **تأكيد** لإنشاء التذكرة`).setFooter({ text: store.settings.storeName }).setTimestamp();
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cbconfirm_' + boostId + '_' + slotIdx + '_' + price).setLabel('✅ تأكيد').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('bstcancel').setLabel('❌ إلغاء').setStyle(ButtonStyle.Danger)
-      );
-      return interaction.update({ embeds: [embed], components: [row] });
-    }
-    // ---- NEW BOOSTING: confirm → create ticket ----
-    if (interaction.isButton() && interaction.customId.startsWith('cbconfirm_')) {
-      const parts = interaction.customId.split('_');
-      const boost = store.customBoosts.find(s => s.id === parseInt(parts[1]));
-      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const slot = boost.slots[parseInt(parts[2])];
-      const price = parseFloat(parts[3]) || 0;
-      if (!slot) return interaction.reply({ content: '❌ Invalid slot.', ephemeral: true });
-      await interaction.deferUpdate();
-      return await createCustomBoostTicket(interaction, boost, slot, price);
-    }
-
     // ---- Cancel button for boost choice flow ----
     if (interaction.isButton() && interaction.customId === 'bstcancel') {
       return interaction.update({ content: '❌ تم الإلغاء / Cancelled.', embeds: [], components: [] });
     }
 
     // ---- PAYMENT METHOD SELECT (account ticket) ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('paymethod_') && !interaction.customId.startsWith('paymethodpool_') && !interaction.customId.startsWith('paymethoddig_') && !interaction.customId.startsWith('paymethodboost_') && !interaction.customId.startsWith('paymethodcamo_') && !interaction.customId.startsWith('paymethodcb_')) {
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('paymethod_') && !interaction.customId.startsWith('paymethodpool_') && !interaction.customId.startsWith('paymethoddig_') && !interaction.customId.startsWith('paymethodboost_') && !interaction.customId.startsWith('paymethodcamo_')) {
       const parts = interaction.customId.split('_');
       const accId = parseInt(parts[1]);
       const ticketId = parts.slice(2).join('_');
@@ -2728,29 +2697,6 @@ client.on('interactionCreate', async (interaction) => {
 
       await interaction.reply({ embeds: [payEmbed] });
       addLog('INFO', `${interaction.user.username} selected ${method.toUpperCase()} for ${payId} (camo)`);
-      return;
-    }
-
-    // ---- PAYMENT METHOD SELECT (NEW BOOSTING ticket) ----
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('paymethodcb_')) {
-      const parts = interaction.customId.split('_');
-      const boostId = parseInt(parts[1]);
-      const ticketId = parts.slice(2).join('_');
-      const boost = store.customBoosts.find(s => s.id === boostId);
-      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const ticket = store.tickets.find(t => t.id === ticketId);
-      if (!ticket) return interaction.reply({ content: '❌ Ticket missing.', ephemeral: true });
-      const method = interaction.values[0];
-      const boostPrice = ticket.amount || 0;
-      const payId = createPaymentRequest(interaction, null, ticket.accountTitle || boost.titleEn, boostPrice, method, ticketId, null, null, null, null, boostId);
-      const pay = store.settings;
-      let textInfo = '';
-      if (method === 'stcpay') textInfo = `📱 **STC Pay**\nالرقم: \`${pay.stcPay.number}\`\nالاسم: *${pay.stcPay.name || '-'}*`;
-      if (method === 'alrajhi') textInfo = `🏦 **AlRajhi Bank**\nIBAN: \`${pay.alrajhi.iban}\`\nالاسم: *${pay.alrajhi.name || '-'}*`;
-      if (method === 'paypal') textInfo = `💳 **PayPal**\nرابط: ${pay.paypal.email}`;
-      const payEmbed = new EmbedBuilder().setColor(0xf0b232).setTitle('💳 بيانات الدفع / Payment Instructions').setDescription(`**الخدمة:** ${ticket.accountTitle || boost.titleEn}\n**المبلغ:** \`${pay.currency}${boostPrice.toFixed(2)}\`\n**رقم العملية:** \`${payId}\`\n\n${textInfo}\n\n⚠️ حوّل المبلغ ثم ارفع صورة الإيصال.`).setFooter({ text: store.settings.storeName }).setTimestamp();
-      await interaction.reply({ embeds: [payEmbed] });
-      addLog('INFO', `${interaction.user.username} selected ${method.toUpperCase()} for ${payId} (new boost)`);
       return;
     }
 
@@ -3033,44 +2979,6 @@ async function createCamoTicket(interaction, camo, gunIdx, selectedCamos, price)
   sendLogToDiscord(`🎨 Camo ticket \`${ticketId}\` by **${interaction.user.username}** for **${camo.titleEn}** (${choiceText}) — $${price}`);
 }
 
-// Helper: create NEW BOOSTING ticket
-async function createCustomBoostTicket(interaction, boost, slot, price) {
-  const categoryId = store.settings.ticketCategoryId;
-  if (!categoryId) return interaction.reply({ content: '❌ النظام غير جاهز.', ephemeral: true }).catch(()=>{});
-  const guild = interaction.guild;
-  if (!guild) return interaction.reply({ content: '❌ داخل السيرفر فقط.', ephemeral: true }).catch(()=>{});
-  const category = guild.channels.cache.get(categoryId);
-  if (!category || category.type !== ChannelType.GuildCategory) return interaction.reply({ content: '❌ خطأ.', ephemeral: true }).catch(()=>{});
-  const ticketChannel = await guild.channels.create({
-    name: `⚡-${interaction.user.username}-boost`, type: ChannelType.GuildText, parent: category,
-    permissionOverwrites: [
-      { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-      { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] }
-    ]
-  });
-  if (store.settings.ownerId) { await ticketChannel.permissionOverwrites.create(store.settings.ownerId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true, ManageChannels: true }).catch(() => {}); }
-  const ticketId = 'TKT-' + String(store.tickets.length + 1).padStart(4, '0');
-  store.tickets.unshift({ id: ticketId, userId: interaction.user.id, userName: interaction.user.username, accountId: null, poolId: null, digitalProductId: null, boostingServiceId: null, camoServiceId: null, customBoostId: boost.id, accountTitle: boost.titleEn + ' — ' + slot.name, amount: parseFloat(price.toFixed(2)), boostingEta: boost.eta, channelId: ticketChannel.id, paymentId: null, paymentMethod: null, status: 'open', createdAt: new Date().toISOString() });
-  saveStore();
-  const pay = store.settings;
-  const options = [];
-  if (pay.stcPay && pay.stcPay.number) options.push({ label: 'STC Pay', value: 'stcpay', description: 'STC Pay: ' + pay.stcPay.number, emoji: '📱' });
-  if (pay.alrajhi && pay.alrajhi.iban) options.push({ label: 'AlRajhi Bank', value: 'alrajhi', description: 'الراجحي', emoji: '🏦' });
-  if (pay.paypal && pay.paypal.email) options.push({ label: 'PayPal', value: 'paypal', description: 'PayPal Link', emoji: '💳' });
-  if (options.length === 0) options.push({ label: 'No payment methods', value: 'none', description: 'Contact admin' });
-  const selectMenu = new StringSelectMenuBuilder().setCustomId('paymethodcb_' + boost.id + '_' + ticketId).setPlaceholder('اختر طريقة الدفع').addOptions(options);
-  const embed = new EmbedBuilder().setColor(store.settings.color || 0x9b59ff).setTitle('⚡ طلب خدمة بوست — ' + boost.titleEn).setDescription(`**مرحباً ${interaction.user.username}! 👋**\n\nتم إنشاء تذكرة خاصة بك.\n\n**📋 تفاصيل الطلب:**\n👤 العميل: **${interaction.user.username}**\n⚡ الخدمة: **${slot.name}**\n💰 السعر: \`${pay.currency}${price.toFixed(2)}\`\n⏱️ المدة: \`${boost.eta}\`\n🎫 رقم التذكرة: \`${ticketId}\`\n\n**📋 خطوات إكمال الطلب:**\n1️⃣ اختر طريقة الدفع\n2️⃣ حوّل المبلغ\n3️⃣ ارفع صورة الإيصال\n4️⃣ انتظر التأكيد\n5️⃣ أرسل بيانات حسابك\n6️⃣ انتظر اكتمال البوست ✅`).setFooter({ text: store.settings.storeName + ' • ' + ticketId }).setTimestamp();
-  const closeRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('close_ticket_' + ticketId).setLabel('إغلاق / Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
-    new ButtonBuilder().setCustomId('coupon_' + ticketId).setLabel('كود خصم / Coupon').setStyle(ButtonStyle.Secondary).setEmoji('🎁')
-  );
-  await ticketChannel.send({ content: '👤 <@' + interaction.user.id + '> | ⚡ تذكرة بوست', embeds: [embed], components: [new ActionRowBuilder().addComponents(selectMenu), closeRow] });
-  if (interaction.deferred || interaction.replied) { await interaction.followUp({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true }).catch(()=>{}); }
-  else { await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true }).catch(()=>{}); }
-  addLog('INFO', `Custom boost ticket ${ticketId} for ${interaction.user.username} → ${slot.name} $${price}`);
-  sendLogToDiscord(`⚡ Boost ticket \`${ticketId}\` by **${interaction.user.username}** for **${slot.name}** — $${price}`);
-}
-
 // Helper: create boosting ticket (used by all boosting choice flows)
 async function createBoostingTicket(interaction, boost, choices, price) {
   const categoryId = store.settings.ticketCategoryId;
@@ -3169,7 +3077,7 @@ async function createBoostingTicket(interaction, boost, choices, price) {
 }
 
 // Helper: create payment request record
-function createPaymentRequest(interaction, accountId, accountTitle, amount, method, ticketId, poolId, digitalProductId, boostingServiceId, camoServiceId, customBoostId) {
+function createPaymentRequest(interaction, accountId, accountTitle, amount, method, ticketId, poolId, digitalProductId, boostingServiceId, camoServiceId) {
   const payId = 'PAY-' + String(100 + store.paymentRequests.length + 1);
   const ticket = store.tickets.find(t => t.id === ticketId);
   let finalAmount = amount;
@@ -3180,7 +3088,7 @@ function createPaymentRequest(interaction, accountId, accountTitle, amount, meth
   }
   store.paymentRequests.unshift({
     id: payId, userId: interaction.user.id, userName: interaction.user.username,
-    accountId, poolId, digitalProductId, boostingServiceId, camoServiceId, customBoostId, accountTitle, amount, discountedAmount: finalAmount, couponCode,
+    accountId, poolId, digitalProductId, boostingServiceId, camoServiceId, accountTitle, amount, discountedAmount: finalAmount, couponCode,
     method: method.toUpperCase(), status: 'Pending',
     date: new Date().toISOString().slice(0, 16).replace('T', ' ')
   });
