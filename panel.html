@@ -361,8 +361,8 @@ a:hover{color:var(--accent-2)}
         <div class="nav-item" data-page="pools"><i class="fa-solid fa-bolt"></i> Auto-Delivery</div>
         <div class="nav-item" data-page="digital"><i class="fa-solid fa-ticket"></i> Digital Products</div>
         <div class="nav-item" data-page="boosting"><i class="fa-solid fa-rocket"></i> Boosting Services</div>
+        <div class="nav-item" data-page="boostSlots"><i class="fa-solid fa-bolt"></i> BOOSTING</div>
         <div class="nav-item" data-page="camo"><i class="fa-solid fa-palette"></i> Camo Unlock</div>
-        <div class="nav-item" data-page="customboost"><i class="fa-solid fa-bolt"></i> NEW BOOSTING</div>
         <div class="nav-item" data-page="coupons"><i class="fa-solid fa-tag"></i> Coupons</div>
       </div>
       <div class="nav-section">
@@ -429,7 +429,7 @@ a:hover{color:var(--accent-2)}
 const API = '/api';
 let SESSION = localStorage.getItem('isiam_session') || '';
 let CURRENT_PAGE = 'dashboard';
-let CACHE = { accounts:[], orders:[], payments:[], tickets:[], customers:[], pools:[], coupons:[], settings:{}, logs:[], stats:{}, digital:[], boosting:[], camo:[], customboost:[] };
+let CACHE = { accounts:[], orders:[], payments:[], tickets:[], customers:[], pools:[], coupons:[], settings:{}, logs:[], stats:{} };
 let IMAGE_QUEUE = []; // for new product modal
 
 // ===== CALL OF DUTY: BLACK OPS 7 / WARZONE CATALOGUE =====
@@ -629,13 +629,13 @@ document.querySelectorAll('.nav-item').forEach(item => {
 
 function renderPage() {
   const titles = { dashboard:'Dashboard', products:'Products', pools:'Auto-Delivery Pools',
-    digital:'Digital Products', boosting:'Boosting Services', camo:'Camo Unlock', customboost:'NEW BOOSTING', coupons:'Coupons',
+    digital:'Digital Products', boosting:'Boosting Services', boostSlots:'BOOSTING', camo:'Camo Unlock', coupons:'Coupons',
     orders:'Orders', payments:'Payment Requests', tickets:'Support Tickets', customers:'Customers',
     settings:'Settings', logs:'Activity Logs' };
   document.getElementById('pageTitle').textContent = titles[CURRENT_PAGE] || 'Dashboard';
   const content = document.getElementById('content');
   const renderers = { dashboard:renderDashboard, products:renderProducts, pools:renderPools,
-    digital:renderDigital, boosting:renderBoosting, camo:renderCamo, customboost:renderCustomBoost, coupons:renderCoupons,
+    digital:renderDigital, boosting:renderBoosting, boostSlots:renderBoostSlots, camo:renderCamo, coupons:renderCoupons,
     orders:renderOrders, payments:renderPayments, tickets:renderTickets, customers:renderCustomers,
     settings:renderSettings, logs:renderLogs };
   (renderers[CURRENT_PAGE] || renderDashboard)(content);
@@ -650,12 +650,12 @@ let _isTyping = false;
 
 async function refreshAll(forceRender) {
   try {
-    const [stats, accounts, orders, payments, tickets, customers, pools, coupons, settings, logs, digital, boosting, camo] = await Promise.all([
+    const [stats, accounts, orders, payments, tickets, customers, pools, coupons, settings, logs, digital, boosting, camo, boostSlots] = await Promise.all([
       api('stats'), api('accounts'), api('orders'), api('payments'),
       api('tickets'), api('customers'), api('pools'), api('coupons'), api('settings'), api('logs'),
-      api('digital'), api('boosting'), api('camo'), api('customboost')
+      api('digital'), api('boosting'), api('camo'), api('boost-slots')
     ]);
-    CACHE = { stats, accounts, orders, payments, tickets, customers, pools, coupons, settings, logs, digital, boosting, camo, customboost };
+    CACHE = { stats, accounts, orders, payments, tickets, customers, pools, coupons, settings, logs, digital, boosting, camo, boostSlots };
     
     // ALWAYS update bot status + badges silently (tiny DOM patches — no flash, no wipe)
     const dot = document.getElementById('botDot');
@@ -804,6 +804,8 @@ function renderDashboard(c) {
           <div class="stat-sub">${s.activeBoosts||0} in progress</div></div>
         <div class="stat-card"><div class="stat-icon"><i class="fa-solid fa-palette"></i></div>
           <div class="stat-label">Camo Services</div><div class="stat-value">${s.camoServices||0}</div></div>
+        <div class="stat-card"><div class="stat-icon"><i class="fa-solid fa-bolt"></i></div>
+          <div class="stat-label">Boosting Slots</div><div class="stat-value">${s.boostSlots||0}</div></div>
         <div class="stat-card"><div class="stat-icon"><i class="fa-solid fa-tag"></i></div>
           <div class="stat-label">Active Coupons</div><div class="stat-value">${s.activeCoupons||0}</div></div>
         <div class="stat-card red"><div class="stat-icon"><i class="fa-solid fa-ban"></i></div>
@@ -1582,7 +1584,7 @@ function openCamoModal(editId) {
   window._camoImages = edit && edit.images ? [...edit.images] : [];
   const isEdit = !!edit;
   const v = (k, d='') => edit ? (edit[k] !== undefined && edit[k] !== null ? edit[k] : d) : d;
-  // Build 4 camo slots from existing camoList or empty
+  // Build 6 camo slots from existing camoList or empty
   const existingCamos = edit && edit.camoList ? edit.camoList : [];
   const slots = [];
   for (let i = 0; i < 6; i++) {
@@ -1602,7 +1604,7 @@ function openCamoModal(editId) {
           }).join('\n')
         : edit.gunList.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name).join('\n'))
     : '';
-  // Build 4 slot fields HTML
+  // Build 6 slot fields HTML
   const slotsHtml = slots.map((s, i) => `
     <div class="form-row">
       <div class="form-field"><label>Camo ${i+1} Name</label><input id="cm_camo${i}_name" value="${escapeAttr(s.name)}" placeholder="e.g. Molten Gold"></div>
@@ -1650,7 +1652,7 @@ async function saveCamo(editId) {
   if (file) { newImage = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
   let images = window._camoImages || [];
   if (newImage) { images = [newImage, ...images.slice(0, 9)]; }
-  // Build camoList from 4 slots
+  // Build camoList from 6 slots
   const camoList = [];
   for (let i = 0; i < 6; i++) {
     const name = val('cm_camo'+i+'_name');
@@ -1726,103 +1728,155 @@ async function deleteCamo(id) {
   catch (e) { toast('error', e.message); }
 }
 
-// ===== NEW BOOSTING (custom boost section) =====
-function renderCustomBoost(c) {
-  const services = CACHE.customboost || [];
+// ===== BOOSTING SLOTS =====
+function renderBoostSlots(c) {
+  const services = CACHE.boostSlots || [];
   const cur = CACHE.settings.currency || '$';
   c.innerHTML = `
     <div class="page active">
       <div class="page-header">
-        <div><h2>NEW BOOSTING</h2><p>${services.length} services • Full control — name your boosts, set prices</p></div>
-        <button class="btn btn-primary" onclick="openCustomBoostModal()"><i class="fa-solid fa-plus"></i> New Boost</button>
+        <div><h2>BOOSTING</h2><p>${services.length} services • Customizable boosting with up to 5 slots</p></div>
+        <button class="btn btn-primary" onclick="openBoostSlotModal()"><i class="fa-solid fa-plus"></i> New Boosting Service</button>
       </div>
-      ${services.length === 0 ? '<div class="empty"><i class="fa-solid fa-bolt"></i><p>No boosting services yet. Create one with up to 5 custom slots.</p><button class="btn btn-primary" onclick="openCustomBoostModal()"><i class="fa-solid fa-plus"></i> Create</button></div>' :
+      ${services.length === 0 ? '<div class="empty"><i class="fa-solid fa-bolt"></i><p>No boosting services yet. Create custom boosting options with up to 5 slots.</p><button class="btn btn-primary" onclick="openBoostSlotModal()"><i class="fa-solid fa-plus"></i> Create Boosting Service</button></div>' :
         `<div class="account-grid">${services.map(s => {
-          const slotCount = s.slots ? s.slots.length : 0;
-          const slotsPreview = s.slots && s.slots.length > 0 ? s.slots.slice(0, 3).map(sl => `${escapeHtml(sl.name)} (${cur}${sl.price||0})`).join(', ') + (slotCount > 3 ? ' +' + (slotCount - 3) : '') : 'No slots';
+          const slotsPreview = s.slots && s.slots.length > 0 ? s.slots.slice(0, 3).map(sl => escapeHtml(sl.name)).join(', ') + (s.slots.length > 3 ? ' +' + (s.slots.length - 3) : '') : 'No slots';
           return `
           <div class="account-card">
             <div class="thumb">
-              ${s.images&&s.images[0] ? `<img src="${s.images[0]}">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--accent);font-size:32px"><i class="fa-solid fa-bolt"></i></div>`}
+              ${s.images&&s.images[0] ? `<img src="${s.images[0]}">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--gold);font-size:32px"><i class="fa-solid fa-bolt"></i></div>`}
               <div class="game-tag">${escapeHtml(s.game)}</div>
-              <div style="position:absolute;top:8px;right:8px"><span class="badge available">${slotCount} slots</span></div>
+              <div style="position:absolute;top:8px;right:8px"><span class="badge available">${s.slots?s.slots.length:0} slots</span></div>
             </div>
             <div class="body">
               <h4>${escapeHtml(s.titleEn)}</h4>
               <div class="sub">${escapeHtml(s.titleAr||'')}</div>
+              <div class="price">${cur}${s.price.toFixed(2)} <span class="text-xs text-muted" style="font-weight:400">starting</span></div>
               <div class="meta">
-                <span><i class="fa-solid fa-list"></i> ${slotsPreview}</span>
+                <span><i class="fa-solid fa-bolt"></i> ${slotsPreview}</span>
                 <span><i class="fa-solid fa-clock"></i> ${escapeHtml(s.eta||'')}</span>
               </div>
             </div>
             <div class="actions">
-              <button class="btn btn-sm" onclick="editCustomBoost(${s.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
-              <button class="btn btn-sm" onclick="repostCustomBoost(${s.id})" title="Re-post"><i class="fa-solid fa-rotate"></i></button>
-              <button class="btn btn-sm btn-danger" onclick="deleteCustomBoost(${s.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+              <button class="btn btn-sm" onclick="viewBoostSlot(${s.id})" title="View"><i class="fa-solid fa-eye"></i></button>
+              <button class="btn btn-sm" onclick="editBoostSlot(${s.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
+              <button class="btn btn-sm" onclick="repostBoostSlot(${s.id})" title="Re-post to Discord"><i class="fa-solid fa-rotate"></i></button>
+              <button class="btn btn-sm btn-danger" onclick="deleteBoostSlot(${s.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
             </div>
           </div>`;
         }).join('')}</div>`}
     </div>`;
 }
-function openCustomBoostModal(editId) {
-  const edit = editId ? CACHE.customboost.find(s => s.id === editId) : null;
-  window._cbImages = edit && edit.images ? [...edit.images] : [];
-  const isEdit = !!edit;
-  const v = (k, d='') => edit ? (edit[k] !== undefined && edit[k] !== null ? edit[k] : d) : d;
-  const existingSlots = edit && edit.slots ? edit.slots : [];
-  const slotFields = [];
-  for (let i = 0; i < 5; i++) {
-    const s = existingSlots[i] || {};
-    slotFields.push(`<div class="form-row"><div class="form-field"><label>Slot ${i+1} Name</label><input id="cb_slot${i}_name" value="${escapeAttr(s.name||'')}" placeholder="e.g. Bronze to Silver"></div><div class="form-field"><label>Slot ${i+1} Price ($)</label><input id="cb_slot${i}_price" type="number" step="0.01" value="${s.price||''}" placeholder="e.g. 10"></div></div>`);
-  }
+function viewBoostSlot(id) {
+  const s = CACHE.boostSlots.find(x => x.id === id); if (!s) return;
+  const cur = CACHE.settings.currency || '$';
+  const slotsHtml = s.slots && s.slots.length ? s.slots.map(sl => `<div style="padding:4px 0;border-bottom:1px solid var(--border)"><b>${escapeHtml(sl.name)}</b> — <span style="color:var(--gold)">${cur}${sl.price.toFixed(2)}</span></div>`).join('') : '<p class="text-muted">No slots</p>';
   showModal(`
-    <div class="modal-header"><h3>${isEdit?'Edit':'New'} Boost Service</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-header"><h3>${escapeHtml(s.titleEn)}</h3><button class="close" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
-      <div class="form-row"><div class="form-field"><label>Title (English) *</label><input id="cb_titleEn" value="${escapeAttr(v('titleEn','Custom Boosting'))}" placeholder="Custom Boosting"></div>
-      <div class="form-field"><label>Title (Arabic)</label><input id="cb_titleAr" value="${escapeAttr(v('titleAr',''))}" placeholder="بوست مخصص"></div></div>
+      ${s.images && s.images.length ? `<div style="display:flex;overflow-x:auto;gap:8px;margin-bottom:16px">${s.images.map(src=>`<img src="${src}" style="height:180px;border-radius:8px;border:1px solid var(--border)">`).join('')}</div>` : ''}
       <div class="form-row-3">
-        <div class="form-field"><label>Game</label><select id="cb_game">
-          ${['Call of Duty Black Ops 7','Call of Duty Warzone','Call of Duty','Call of Duty Mobile','Valorant','Fortnite','Apex Legends','Other'].map(g=>`<option ${v('game','Call of Duty Black Ops 7')===g?'selected':''}>${g}</option>`).join('')}
-        </select></div>
-        <div class="form-field"><label>ETA</label><input id="cb_eta" value="${escapeAttr(v('eta','24-48 hours'))}"></div>
-        <div class="form-field"><label>Cover Image</label><input type="file" id="cb_image" accept="image/*"></div>
+        <div class="form-field"><label>Game</label><div>${escapeHtml(s.game)}</div></div>
+        <div class="form-field"><label>Starting Price</label><div class="mono" style="color:var(--gold);font-size:18px">${cur}${s.price.toFixed(2)}</div></div>
+        <div class="form-field"><label>ETA</label><div>${escapeHtml(s.eta||'-')}</div></div>
       </div>
-      <div class="panel-card" style="background:var(--bg-elev);border:1px solid var(--border)">
-        <h3 style="margin-bottom:12px"><i class="fa-solid fa-bolt"></i> Boost Slots (5 — fill what you want)</h3>
-        ${slotFields.join('')}
-        <p class="text-xs text-muted mt-2">Leave empty slots if not needed. Customer picks from filled ones.</p>
-      </div>
-      <div class="form-row"><div class="form-field"><label>Description (EN)</label><textarea id="cb_descEn">${escapeHtml(v('descriptionEn',''))}</textarea></div>
-      <div class="form-field"><label>Description (AR)</label><textarea id="cb_descAr">${escapeHtml(v('descriptionAr',''))}</textarea></div></div>
+      <div class="form-field"><label>Slots (${s.slots?s.slots.length:0})</label><div>${slotsHtml}</div></div>
+      ${s.descriptionEn?`<div class="form-field"><label>Description (EN)</label><div>${escapeHtml(s.descriptionEn)}</div></div>`:''}
+      ${s.descriptionAr?`<div class="form-field"><label>Description (AR)</label><div>${escapeHtml(s.descriptionAr)}</div></div>`:''}
     </div>
-    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveCustomBoost(${editId||0})"><i class="fa-solid fa-bolt"></i> ${isEdit?'Update':'Create'}</button></div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" onclick="closeModal();editBoostSlot(${s.id})"><i class="fa-solid fa-pen"></i> Edit</button></div>
   `);
 }
-async function saveCustomBoost(editId) {
-  const file = document.getElementById('cb_image').files[0];
-  let newImage = null;
-  if (file) { newImage = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
-  let images = window._cbImages || [];
-  if (newImage) { images = [newImage, ...images.slice(0, 9)]; }
+function editBoostSlot(id) { openBoostSlotModal(id); }
+async function repostBoostSlot(id) {
+  if (!confirm('Re-post this boosting service to Discord? Old message will be deleted.')) return;
+  try { await api(`boost-slots/${id}/repost`, { method:'POST' }); toast('success', 'Re-posted to Discord'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+async function deleteBoostSlot(id) {
+  if (!confirm('Delete this boosting service?')) return;
+  try { await api('boost-slots/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+function openBoostSlotModal(editId) {
+  const edit = editId ? CACHE.boostSlots.find(s => s.id === editId) : null;
+  window._boostSlotImages = edit && edit.images ? [...edit.images] : [];
+  const isEdit = !!edit;
+  const v = (k, d='') => edit ? (edit[k] !== undefined && edit[k] !== null ? edit[k] : d) : d;
+  // Build 5 slots from existing slots or empty
+  const existingSlots = edit && edit.slots ? edit.slots : [];
   const slots = [];
   for (let i = 0; i < 5; i++) {
-    const name = val('cb_slot'+i+'_name');
-    const price = val('cb_slot'+i+'_price');
-    if (name) slots.push({ name, price: price ? parseFloat(price) : 0 });
+    const sl = existingSlots[i] || {};
+    slots.push({ name: sl.name || '', price: (sl.price !== null && sl.price !== undefined && sl.price !== '') ? sl.price : '' });
   }
-  const data = { titleEn: val('cb_titleEn'), titleAr: val('cb_titleAr'), game: val('cb_game'), eta: val('cb_eta') || '24-48 hours', descriptionEn: val('cb_descEn'), descriptionAr: val('cb_descAr'), images, slots };
+  const slotsHtml = slots.map((s, i) => `
+    <div class="form-row">
+      <div class="form-field"><label>Slot ${i+1} Name</label><input id="bs_slot${i}_name" value="${escapeAttr(s.name)}" placeholder="e.g. Win Boost"></div>
+      <div class="form-field"><label>Slot ${i+1} Price ($)</label><input id="bs_slot${i}_price" type="number" step="0.01" value="${s.price}" placeholder="e.g. 15"></div>
+    </div>`).join('');
+  showModal(`
+    <div class="modal-header"><h3>${isEdit?'Edit':'New'} Boosting Service</h3><button class="close" onclick="closeModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-row"><div class="form-field"><label>Title (English) *</label><input id="bs_titleEn" value="${escapeAttr(v('titleEn','Custom Boosting'))}" placeholder="Custom Boosting"></div>
+      <div class="form-field"><label>Title (Arabic)</label><input id="bs_titleAr" value="${escapeAttr(v('titleAr',''))}" placeholder="بوست مخصص"></div></div>
+      <div class="form-row-3">
+        <div class="form-field"><label>Game *</label><select id="bs_game">
+          ${['Call of Duty Black Ops 7','Call of Duty Warzone','Call of Duty','Call of Duty Mobile','Valorant','Fortnite','Apex Legends','Other'].map(g=>`<option ${v('game','Call of Duty Black Ops 7')===g?'selected':''}>${g}</option>`).join('')}
+        </select></div>
+        <div class="form-field"><label>Starting Price ($) *</label><input id="bs_price" type="number" step="0.01" value="${v('price',15)}" placeholder="15.00"></div>
+        <div class="form-field"><label>ETA</label><input id="bs_eta" value="${escapeAttr(v('eta','24-48 hours'))}" placeholder="24-48 hours"></div>
+      </div>
+      <div class="panel-card" style="background:var(--bg-elev);border:1px solid var(--border)">
+        <h3 style="margin-bottom:12px"><i class="fa-solid fa-bolt"></i> Boosting Slots (fill what you want)</h3>
+        ${slotsHtml}
+        <p class="text-xs text-muted mt-2">Leave any slot empty if you don't need it. Customer picks from filled slots.</p>
+      </div>
+      <div class="form-row"><div class="form-field"><label>${isEdit?'New Cover Image (optional)':'Cover Image (optional)'}</label><input type="file" id="bs_image" accept="image/*"></div></div>
+      <div class="form-row"><div class="form-field"><label>Description (EN)</label><textarea id="bs_descEn" placeholder="Fast and safe boosting service.">${escapeHtml(v('descriptionEn',''))}</textarea></div>
+      <div class="form-field"><label>Description (AR)</label><textarea id="bs_descAr" placeholder="خدمة بوست سريعة وآمنة.">${escapeHtml(v('descriptionAr',''))}</textarea></div></div>
+    </div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveBoostSlot(${editId||0})"><i class="fa-solid fa-bolt"></i> ${isEdit?'Update':'Create'}</button></div>
+  `);
+}
+async function saveBoostSlot(editId) {
+  const file = document.getElementById('bs_image').files[0];
+  let newImage = null;
+  if (file) { newImage = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
+  let images = window._boostSlotImages || [];
+  if (newImage) { images = [newImage, ...images.slice(0, 9)]; }
+  // Build slots from 5 inputs
+  const slots = [];
+  for (let i = 0; i < 5; i++) {
+    const name = val('bs_slot'+i+'_name');
+    const price = val('bs_slot'+i+'_price');
+    if (name) {
+      slots.push({ name: name, price: price ? parseFloat(price) : 0 });
+    }
+  }
+  const data = {
+    titleEn: val('bs_titleEn'), titleAr: val('bs_titleAr'),
+    game: val('bs_game'),
+    price: parseFloat(val('bs_price')) || 0,
+    eta: val('bs_eta') || '24-48 hours',
+    slots: slots,
+    descriptionEn: val('bs_descEn'), descriptionAr: val('bs_descAr'),
+    images
+  };
   if (!data.titleEn) return toast('error', 'Title required');
-  if (slots.length === 0) return toast('error', 'Fill at least 1 slot');
   try {
-    if (editId) { await api('customboost/'+editId, { method:'PUT', body: JSON.stringify(data) }); toast('success', 'Updated'); }
-    else { await api('customboost', { method:'POST', body: JSON.stringify(data) }); toast('success', 'Created & posted to Discord'); }
+    if (editId) {
+      await api('boost-slots/'+editId, { method:'PUT', body: JSON.stringify(data) });
+      toast('success', 'Boosting service updated');
+    } else {
+      await api('boost-slots', { method:'POST', body: JSON.stringify(data) });
+      toast('success', 'Boosting service created & posted to Discord');
+    }
     closeModal(); refreshAll(true);
   } catch (e) { toast('error', e.message); }
 }
-function editCustomBoost(id) { openCustomBoostModal(id); }
-async function repostCustomBoost(id) { if (!confirm('Re-post to Discord?')) return; try { await api(`customboost/${id}/repost`, { method:'POST' }); toast('success', 'Re-posted'); refreshAll(true); } catch (e) { toast('error', e.message); } }
-async function deleteCustomBoost(id) { if (!confirm('Delete this boost?')) return; try { await api('customboost/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); } catch (e) { toast('error', e.message); } }
 
 // ===== COUPONS =====
 function renderCoupons(c) {
@@ -2133,8 +2187,8 @@ function renderSettings(c) {
         <div class="form-field"><label>Ticket Category ID</label><input id="s_tktCat" value="${escapeAttr(s.ticketCategoryId||'')}" placeholder="1234567890"></div></div>
         <div class="form-row"><div class="form-field"><label>Digital Products Channel ID</label><input id="s_digCh" value="${escapeAttr(s.digitalChannelId||'')}" placeholder="fallback to Products Channel"></div>
         <div class="form-field"><label>Boosting Services Channel ID</label><input id="s_boostCh" value="${escapeAttr(s.boostingChannelId||'')}" placeholder="fallback to Products Channel"></div></div>
-        <div class="form-row"><div class="form-field"><label>NEW BOOSTING Channel ID</label><input id="s_cbCh" value="${escapeAttr(s.customBoostingChannelId||'')}" placeholder="fallback to Products Channel"></div></div>
         <div class="form-row"><div class="form-field"><label>Camo Unlock Channel ID</label><input id="s_camoCh" value="${escapeAttr(s.camoChannelId||'')}" placeholder="fallback to Products Channel"></div>
+        <div class="form-field"><label>BOOSTING Channel ID</label><input id="s_boostSlotCh" value="${escapeAttr(s.boostSlotChannelId||'')}" placeholder="fallback to Products Channel"></div></div>
         <div class="form-field"><label>Log Channel ID</label><input id="s_logCh" value="${escapeAttr(s.logChannelId||'')}" placeholder="1234567890"></div></div>
         <div class="form-row"><div class="form-field"><label>Owner Discord ID</label><input id="s_owner" value="${escapeAttr(s.ownerId||'')}" placeholder="Your Discord ID"></div>
         <div class="form-field"><label>Staff Role IDs (comma-separated)</label><input id="s_staff" value="${escapeAttr((s.staffRoleIds||[]).join(','))}" placeholder="123,456,789"></div></div>
@@ -2175,7 +2229,7 @@ async function saveSettings() {
   const data = {
     storeName: val('s_storeName'), currency: val('s_currency'),
     color, autoCloseSeconds: parseInt(val('s_autoClose')) || 15,
-    accountsChannelId: val('s_accCh'), digitalChannelId: val('s_digCh'), boostingChannelId: val('s_boostCh'), customBoostingChannelId: val('s_cbCh'), camoChannelId: val('s_camoCh'),
+    accountsChannelId: val('s_accCh'), digitalChannelId: val('s_digCh'), boostingChannelId: val('s_boostCh'), camoChannelId: val('s_camoCh'), boostSlotChannelId: val('s_boostSlotCh'),
     ticketCategoryId: val('s_tktCat'),
     logChannelId: val('s_logCh'), ownerId: val('s_owner'), staffRoleIds: staff,
     stcPay: { number: val('s_stcNum'), name: val('s_stcName') },
@@ -2280,7 +2334,7 @@ function setupKeyboardShortcuts() {
       e.preventDefault();
       // New button — context-aware based on current page
       const newBtns = { products:'openAccountModal()', pools:'openPoolModal()', digital:'openDigitalModal()',
-        boosting:'openBoostingModal()', camo:'openCamoModal()', coupons:'openCouponModal()' };
+        boosting:'openBoostingModal()', boostSlots:'openBoostSlotModal()', camo:'openCamoModal()', coupons:'openCouponModal()' };
       if (newBtns[CURRENT_PAGE]) eval(newBtns[CURRENT_PAGE]);
     } else if (e.key.toLowerCase() === 'r') {
       e.preventDefault();
