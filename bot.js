@@ -2708,7 +2708,7 @@ client.on('interactionCreate', async (interaction) => {
       return await showGunSelectForBoost(interaction, boost, catIdx);
     }
 
-    // ---- GUN: customer selected gun → show confirm with $13 flat price ----
+    // ---- GUN: customer selected gun(s) → show confirm with total price (multi-select) ----
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('bstg_')) {
       const parts = interaction.customId.split('_');
       const boostId = parseInt(parts[1]);
@@ -2718,49 +2718,65 @@ client.on('interactionCreate', async (interaction) => {
       const categories = getGunCategories(boost);
       const cat = categories[catIdx] || categories[0];
       if (!cat) return interaction.reply({ content: '❌ Category missing.', ephemeral: true });
-      const gunLocalIdx = parseInt(interaction.values[0]);
-      const gun = cat.guns[gunLocalIdx];
-      if (!gun) return interaction.reply({ content: '❌ Gun missing.', ephemeral: true });
-      // Find global gun index in flat gunList
-      const globalGunIdx = boost.gunList.findIndex(g => g.name === gun.name && g.emoji === gun.emoji);
-      const gunEmoji = gun.emoji ? (typeof gun.emoji === 'object' ? '<:'+gun.emoji.name+':'+gun.emoji.id+'>' : gun.emoji) + ' ' : '🔫 ';
-      const gunLabel = gunEmoji + gun.name;
-      // $13 flat per gun to max out — no level entry needed
-      const price = gun.pricePerLevel > 0 ? gun.pricePerLevel : 13;
+
+      // Multi-select: customer can pick multiple guns
+      const selectedGunIndices = interaction.values.map(v => parseInt(v));
+      const selectedGuns = selectedGunIndices.map(i => cat.guns[i]).filter(Boolean);
+      if (selectedGuns.length === 0) return interaction.reply({ content: '❌ Gun missing.', ephemeral: true });
+
+      // Calculate total price (sum of all selected guns)
+      let totalPrice = 0;
+      const gunLabels = [];
+      for (const gun of selectedGuns) {
+        const price = gun.pricePerLevel > 0 ? gun.pricePerLevel : 13;
+        totalPrice += price;
+        const gunEmoji = gun.emoji ? (typeof gun.emoji === 'object' ? '<:'+gun.emoji.name+':'+gun.emoji.id+'>' : gun.emoji) + ' ' : '🔫 ';
+        gunLabels.push(gunEmoji + gun.name + ' ($' + price + ')');
+      }
+
+      // Find global gun indices for the confirm button (comma-separated)
+      const globalIndices = selectedGuns.map(gun => boost.gunList.findIndex(g => g.name === gun.name && g.emoji === gun.emoji));
+
       const cur = store.settings.currency;
       const embed = new EmbedBuilder()
         .setColor(store.settings.color || 0x9b59ff)
         .setTitle('✅ تأكيد الطلب')
         .setDescription(
           `**${boost.titleEn}**\n\n` +
-          `🔫 السلاح: \`${gunLabel}\`\n` +
-          `📊 الخدمة: رفع السلاح للمستوى الأقصى\n` +
-          `💰 السعر: \`${cur}${price.toFixed(2)}\`\n` +
+          `🔫 الأسلحة المختارة (${selectedGuns.length}):\n${gunLabels.join('\n')}\n\n` +
+          `📊 الخدمة: رفع الأسلحة للمستوى الأقصى\n` +
+          `💰 السعر الإجمالي: \`${cur}${totalPrice.toFixed(2)}\`\n` +
           `⏱️ المدة: \`${boost.eta}\`\n\n` +
           `اضغط **تأكيد** لإنشاء التذكرة`
         )
         .setFooter({ text: store.settings.storeName })
         .setTimestamp();
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('bstgunconfirm_' + boostId + '_' + globalGunIdx + '_' + price).setLabel('✅ تأكيد').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('bstgunconfirm_' + boostId + '_' + globalIndices.join(',') + '_' + totalPrice).setLabel('✅ تأكيد').setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId('bstcancel').setLabel('❌ إلغاء').setStyle(ButtonStyle.Danger)
       );
       return interaction.update({ embeds: [embed], components: [row] });
     }
 
-    // ---- GUN: confirm → create ticket with flat $13 price ----
+    // ---- GUN: confirm → create ticket with multiple guns ----
     if (interaction.isButton() && interaction.customId.startsWith('bstgunconfirm_')) {
       const parts = interaction.customId.split('_');
       const boostId = parseInt(parts[1]);
-      const gunIdx = parseInt(parts[2]);
-      const price = parseFloat(parts[3]) || 13;
+      const gunIndicesStr = parts[2]; // comma-separated indices
+      const totalPrice = parseFloat(parts[3]) || 13;
       const boost = store.boostingServices.find(s => s.id === boostId);
       if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-      const gun = boost.gunList[gunIdx];
-      if (!gun) return interaction.reply({ content: '❌ Gun missing.', ephemeral: true });
-      const gunLabel = (gun.emoji ? (typeof gun.emoji === 'object' ? '<:'+gun.emoji.name+':'+gun.emoji.id+'>' : gun.emoji) + ' ' : '') + gun.name;
+
+      // Parse gun indices
+      const gunIndices = gunIndicesStr.split(',').map(s => parseInt(s)).filter(n => !isNaN(n));
+      const selectedGuns = gunIndices.map(i => boost.gunList[i]).filter(Boolean);
+      if (selectedGuns.length === 0) return interaction.reply({ content: '❌ Guns missing.', ephemeral: true });
+
+      // Build gun labels
+      const gunLabels = selectedGuns.map(gun => (gun.emoji ? (typeof gun.emoji === 'object' ? '<:'+gun.emoji.name+':'+gun.emoji.id+'>' : gun.emoji) + ' ' : '') + gun.name);
+      const gunLabel = gunLabels.join(', ');
       await interaction.deferUpdate();
-      return await createBoostingTicket(interaction, boost, { type: 'gun_level', gunName: gunLabel, fromLevel: 'current', toLevel: 'MAX', levels: 'MAX' }, price);
+      return await createBoostingTicket(interaction, boost, { type: 'gun_level', gunName: gunLabel, fromLevel: 'current', toLevel: 'MAX', levels: 'MAX', gunCount: selectedGuns.length }, totalPrice);
     }
 
     // ---- Cancel button for boost choice flow ----
@@ -3087,7 +3103,9 @@ async function showGunSelectForBoost(interaction, boost, catIdx) {
   }));
   const select = new StringSelectMenuBuilder()
     .setCustomId('bstg_' + boost.id + '_' + catIdx)
-    .setPlaceholder('اختر السلاح / Select your gun')
+    .setPlaceholder('اختر سلاح أو أكثر / Select gun(s)')
+    .setMinValues(1)
+    .setMaxValues(Math.min(options.length, 25))
     .addOptions(options);
   const catName = emojiToStr(cat.emoji) + cat.name;
   const embed = new EmbedBuilder()
