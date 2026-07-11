@@ -823,6 +823,9 @@ app.post('/api/payments/:id/reject', async (req, res) => {
     const pr = store.paymentRequests.find(p => p.id === req.params.id);
     if (!pr) return res.status(404).json({ error: 'Not found' });
 
+    const reason = (req.body && req.body.reason) || '';
+    const reasonLine = reason ? `\n📝 **السبب / Reason:** ${reason}\n` : '';
+
     const ticket = store.tickets.find(t => t.paymentId === pr.id);
     if (ticket && ticket.channelId && client.isReady()) {
       const ticketChannel = client.channels.cache.get(ticket.channelId);
@@ -831,27 +834,44 @@ app.post('/api/payments/:id/reject', async (req, res) => {
           .setColor(0xda373c)
           .setTitle('❌ تم رفض الدفع / Payment Rejected')
           .setDescription(
-            `طلب رقم: \`${pr.id}\` الخاص بـ **${pr.accountTitle}** تم رفضه.\n\n` +
-            `⚠️ يرجى التحقق من المبلغ المدفوع والمحاولة مرة أخرى.\n` +
-            `Upload a new receipt or contact support.`
+            `طلب رقم: \`${pr.id}\` الخاص بـ **${pr.accountTitle}** تم رفضه.${reasonLine}\n\n` +
+            `⚠️ يرجى التحقق من المبلغ المدفوع ورفع إيصال جديد.\n` +
+            `Please verify the amount and upload a new receipt.`
           )
-          .setFooter({ text: store.settings.storeName })
+          .setFooter({ text: store.settings.storeName + ' • Waiting for new receipt' })
           .setTimestamp();
         await ticketChannel.send({ embeds: [rejectEmbed] });
         ticket.status = 'waiting_payment';
         pr.status = 'Pending';
       }
-    } else {
-      if (pr.userId && client.isReady()) {
-        client.users.fetch(pr.userId).then(user => {
-          user.send(`❌ **${store.settings.storeName} — Payment Rejected**\n\nطلب رقم: \`${pr.id}\` الخاص بـ **${pr.accountTitle}** تم رفضه. يرجى مراجعة الدعم الفني.`).catch(() => {});
-        }).catch(() => {});
-      }
+    }
+
+    // ALWAYS DM the customer about the rejection
+    if (pr.userId && client.isReady()) {
+      client.users.fetch(pr.userId).then(user => {
+        const dmEmbed = new EmbedBuilder()
+          .setColor(0xda373c)
+          .setTitle('❌ تم رفض الدفع / Payment Rejected')
+          .setDescription(
+            `**مرحباً ${pr.userName}!**\n\n` +
+            `طلبك رقم \`${pr.id}\` للمنتج **${pr.accountTitle}** تم رفضه.${reasonLine}\n\n` +
+            `⚠️ يرجى التحقق من المبلغ المدفوع ورفع إيصال جديد في التذكرة.\n` +
+            `Please verify the payment amount and upload a new receipt in the ticket.`
+          )
+          .setFooter({ text: store.settings.storeName })
+          .setTimestamp();
+        user.send({ embeds: [dmEmbed] }).catch(() => {});
+      }).catch(() => {});
+    }
+
+    if (!ticket || !ticket.channelId) {
       pr.status = 'Rejected';
     }
+
     saveStore();
-    sendLogToDiscord(`❌ Payment rejected: \`${pr.id}\` for **${pr.accountTitle}**`);
-    addLog('WARN', `Payment rejected: ${pr.id}`);
+    sendLogToDiscord(`❌ Payment rejected: \`${pr.id}\` for **${pr.accountTitle}**${reason ? ' — ' + reason : ''}`);
+    addLog('WARN', `Payment rejected: ${pr.id}${reason ? ' — ' + reason : ''}`);
+    sendOrderAlert(`❌ Payment rejected: \`${pr.id}\` for **${pr.accountTitle}**${reason ? ' — ' + reason : ''}`);
     res.json(pr);
   } catch (e) {
     console.error('Reject payment error:', e);
