@@ -2294,7 +2294,7 @@ client.on('interactionCreate', async (interaction) => {
         const options = expanded.slice(0, 25).map(r => ({
           label: r.label.slice(0, 100), value: String(r.globalIdx),
           description: 'Select if your current rank is ' + r.label,
-          emoji: r.emoji || undefined
+          emoji: r.emoji && typeof r.emoji === 'object' ? { id: r.emoji.id, name: r.emoji.name } : (r.emoji || undefined)
         }));
         const select = new StringSelectMenuBuilder().setCustomId('bstrf_' + boostId).setPlaceholder('اختر رتبتك الحالية / Select your CURRENT rank').addOptions(options);
         const rankSummary = boost.rankList.map(r => emojiToStr(r.emoji) + '`' + r.name + '`').join(' → ');
@@ -2321,7 +2321,7 @@ client.on('interactionCreate', async (interaction) => {
             label: c.name.slice(0, 100),
             value: String(i),
             description: c.guns.length + ' guns available',
-            emoji: c.emoji || undefined
+            emoji: c.emoji && typeof c.emoji === 'object' ? { id: c.emoji.id, name: c.emoji.name } : (c.emoji || undefined)
           }));
           const select = new StringSelectMenuBuilder()
             .setCustomId('bstcat_' + boostId)
@@ -2533,7 +2533,7 @@ client.on('interactionCreate', async (interaction) => {
       const cur = store.settings.currency;
       // If gunList exists → customer picks gun first
       if (camo.gunList && camo.gunList.length > 0) {
-        const options = camo.gunList.slice(0, 25).map((g, i) => ({ label: g.name.slice(0, 100), value: String(i), description: 'Select this gun', emoji: g.emoji || undefined }));
+        const options = camo.gunList.slice(0, 25).map((g, i) => ({ label: g.name.slice(0, 100), value: String(i), description: 'Select this gun', emoji: g.emoji && typeof g.emoji === 'object' ? { id: g.emoji.id, name: g.emoji.name } : (g.emoji || undefined) }));
         const select = new StringSelectMenuBuilder().setCustomId('camogun_' + camoId).setPlaceholder('اختر السلاح / Select your gun').addOptions(options);
         const embed = new EmbedBuilder().setColor(brandColor).setTitle('🎨 ' + camo.titleEn).setDescription(`**Choose which gun to unlock camos for.**\n💰 Price: \`${cur}${camo.pricePerCamo} per camo\``).setFooter({ text: store.settings.storeName + ' • Step 1 of 2' });
         return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
@@ -2611,7 +2611,12 @@ client.on('interactionCreate', async (interaction) => {
       for (let i = fromIdx + 1; i < expanded.length; i++) {
         const tiers = i - fromIdx;
         const price = boost.pricePerRank * tiers;
-        targetOptions.push({ label: emojiToStr(fromRank.emoji) + fromRank.label + ' → ' + emojiToStr(expanded[i].emoji) + expanded[i].label, value: String(i), description: store.settings.currency + price.toFixed(2) + ' (' + tiers + ' tier' + (tiers>1?'s':'') + ')', emoji: expanded[i].emoji && typeof expanded[i].emoji === 'object' ? { id: expanded[i].emoji.id, name: expanded[i].emoji.name } : expanded[i].emoji || undefined });
+        targetOptions.push({
+          label: fromRank.label + ' → ' + expanded[i].label,
+          value: String(i),
+          description: store.settings.currency + price.toFixed(2) + ' (' + tiers + ' tier' + (tiers>1?'s':'') + ')',
+          emoji: expanded[i].emoji && typeof expanded[i].emoji === 'object' ? { id: expanded[i].emoji.id, name: expanded[i].emoji.name } : expanded[i].emoji || undefined
+        });
       }
       if (targetOptions.length === 0) return interaction.reply({ content: '❌ لا توجد رتب أعلى من رتبتك الحالية / No higher ranks available.', ephemeral: true });
       const select = new StringSelectMenuBuilder().setCustomId('bstrt_' + boostId + '_' + fromIdx).setPlaceholder('اختر الرتبة المستهدفة / Select TARGET rank').addOptions(targetOptions.slice(0, 25));
@@ -3078,7 +3083,7 @@ async function showGunSelectForBoost(interaction, boost, catIdx) {
     label: g.name.slice(0, 100),
     value: String(i),
     description: '$' + (g.pricePerLevel > 0 ? g.pricePerLevel : 13) + ' للمستوى الأقصى',
-    emoji: g.emoji || undefined
+    emoji: g.emoji && typeof g.emoji === 'object' ? { id: g.emoji.id, name: g.emoji.name } : (g.emoji || undefined)
   }));
   const select = new StringSelectMenuBuilder()
     .setCustomId('bstg_' + boost.id + '_' + catIdx)
@@ -3109,7 +3114,7 @@ async function showCamoMultiSelect(interaction, camo, gunIdx) {
   }
   const options = camo.camoList.slice(0, 25).map((c, i) => {
     const p = (c.price !== null && c.price !== undefined) ? c.price : camo.pricePerCamo;
-    return { label: c.name.slice(0, 100), value: String(i), description: cur + p.toFixed(2), emoji: c.emoji || undefined };
+    return { label: c.name.slice(0, 100), value: String(i), description: cur + p.toFixed(2), emoji: c.emoji && typeof c.emoji === 'object' ? { id: c.emoji.id, name: c.emoji.name } : (c.emoji || undefined) };
   });
   const select = new StringSelectMenuBuilder()
     .setCustomId('camocamos_' + camo.id + '_' + (gunIdx === null ? 'null' : gunIdx))
