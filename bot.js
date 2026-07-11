@@ -43,7 +43,6 @@ const DEFAULT_STORE = {
   digitalProducts: [],   // PSN cards, Xbox subs, Netflix, CD keys — instant code delivery
   boostingServices: [],  // CoD/Warzone rank, prestige, gun level boosting — service-based
   camoServices: [],      // CoD/Warzone weapon camo unlock — admin adds camo names, customer picks
-  boostSlots: [],        // Customizable boosting slots — admin defines up to 5 options per service
   paymentRequests: [],
   tickets: [],
   logs: [],
@@ -54,7 +53,6 @@ const DEFAULT_STORE = {
     digitalChannelId: '',     // channel for Digital Products posts (fallback: accountsChannelId)
     boostingChannelId: '',   // channel for Boosting Services posts (fallback: accountsChannelId)
     camoChannelId: '',       // channel for Camo Unlock posts (fallback: accountsChannelId)
-    boostSlotChannelId: '',   // channel for Boosting Slots posts (fallback: accountsChannelId)
     ticketCategoryId: '',
     logChannelId: '',
     ownerId: '',
@@ -67,7 +65,8 @@ const DEFAULT_STORE = {
     alrajhi: { iban: 'SA0000000000000000000', name: '' },
     paypal: { email: 'pay@example.com', name: '' },
     color: 0x9b59ff, // brand purple
-    autoCloseSeconds: 15
+    autoCloseSeconds: 15,
+    webhookUrl: ''  // External alert webhook (IFTTT/Zapier/ntfy.sh for WhatsApp/Phone alerts)
   },
   nextId: 1
 };
@@ -130,6 +129,47 @@ function sendLogToDiscord(msg) {
   if (chId && client.isReady()) {
     const ch = client.channels.cache.get(chId);
     if (ch) ch.send(msg).catch(() => {});
+  }
+}
+
+// ===== OWNER ALERT SYSTEM (DM + @here ping + Webhook for WhatsApp/Phone) =====
+async function notifyOwner(title, details) {
+  const s = store.settings;
+  const alertMsg = `🔔 **${title}**\n\n${details}`;
+
+  // 1. DM the owner on Discord
+  if (s.ownerId && client.isReady()) {
+    try {
+      const owner = await client.users.fetch(s.ownerId);
+      await owner.send(alertMsg);
+    } catch (e) {}
+  }
+
+  // 2. @here ping in log channel (triggers Discord mobile push notification)
+  if (s.logChannelId && client.isReady()) {
+    try {
+      const ch = client.channels.cache.get(s.logChannelId);
+      if (ch) await ch.send(`@here 🔔 **${title}**\n${details}`);
+    } catch (e) {}
+  }
+
+  // 3. Send to webhook URL (connect to IFTTT/Zapier/ntfy.sh for WhatsApp/Phone call alerts)
+  if (s.webhookUrl) {
+    try {
+      const http = require('https' === s.webhookUrl.split(':')[0] ? 'https' : 'http');
+      const payload = JSON.stringify({ title, details, timestamp: new Date().toISOString() });
+      const url = new URL(s.webhookUrl);
+      const req = http.request({
+        hostname: url.hostname,
+        port: url.port || ('https' === url.protocol.replace(':', '') ? 443 : 80),
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+      }, () => {});
+      req.on('error', () => {});
+      req.write(payload);
+      req.end();
+    } catch (e) {}
   }
 }
 
@@ -216,7 +256,6 @@ app.get('/api/stats', (req, res) => {
       boostingServices: store.boostingServices.length,
       activeBoosts: store.tickets.filter(t => t.status === 'boosting_in_progress').length,
       camoServices: store.camoServices.length,
-      boostSlots: store.boostSlots.length,
       botOnline: client.isReady(),
       // Sales chart (last 14 days)
       salesChart: buildSalesChart(delivered, 14),
@@ -1484,6 +1523,15 @@ async function postCamoToDiscord(channel, service) {
       { name: '⏱️ ETA', value: service.eta, inline: true },
       { name: '💰 Starting from', value: '```fix\n' + cur + service.pricePerCamo.toFixed(2) + ' per camo```', inline: false }
     );
+  // Show camo list with emojis
+  if (service.camoList && service.camoList.length > 0) {
+    const camosText = service.camoList.slice(0, 20).map(c => {
+      const em = c.emoji ? (typeof c.emoji === 'object' ? '<:'+c.emoji.name+':'+c.emoji.id+'>' : c.emoji) + ' ' : '';
+      const p = c.price !== null && c.price !== undefined ? c.price : service.pricePerCamo;
+      return em + '`' + c.name + '` (' + cur + p.toFixed(2) + ')';
+    }).join(', ');
+    mainEmbed.addFields({ name: '🎨 Available Camos', value: camosText + (service.camoList.length > 20 ? '\n*(+' + (service.camoList.length - 20) + ' more)*' : ''), inline: false });
+  }
   // Show gun list if defined
   if (service.gunList && service.gunList.length > 0) {
     const gunsText = service.gunList.slice(0, 20).map(g => {
@@ -1633,135 +1681,6 @@ app.post('/api/camo/:id/complete', async (req, res) => {
     res.json({ success: true, ticketId: ticket.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// ===== BOOSTING SLOTS (customizable 5-slot boosting services) =====
-app.get('/api/boost-slots', (req, res) => { try { res.json(store.boostSlots); } catch (e) { res.status(500).json({ error: e.message }); } });
-
-app.post('/api/boost-slots', async (req, res) => {
-  try {
-    const { titleEn, titleAr, game, price, slots, eta, descriptionEn, descriptionAr, images } = req.body;
-    if (!titleEn) return res.status(400).json({ error: 'Title required' });
-    const service = {
-      id: genId(), titleEn, titleAr: titleAr || '',
-      game: game || 'Call of Duty',
-      price: parseFloat(price) || 0,
-      slots: Array.isArray(slots) ? slots.filter(s => s.name).map(s => ({ name: s.name, price: parseFloat(s.price) || 0 })) : [],
-      eta: eta || '24-48 hours',
-      descriptionEn: descriptionEn || '', descriptionAr: descriptionAr || '',
-      images: Array.isArray(images) ? images : [],
-      status: 'active',
-      createdAt: new Date().toISOString(), discordMessageIds: []
-    };
-    store.boostSlots.push(service);
-    saveStore();
-    const channelId = store.settings.boostSlotChannelId || store.settings.accountsChannelId;
-    if (channelId && client.isReady()) {
-      const channel = client.channels.cache.get(channelId);
-      if (channel) await postBoostSlotToDiscord(channel, service).catch(e => addLog('ERROR', 'Boost Slot post failed: ' + e.message));
-    }
-    addLog('INFO', `Boosting Slot service created: ${titleEn}`);
-    res.json(service);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put('/api/boost-slots/:id', (req, res) => {
-  try {
-    const s = store.boostSlots.find(x => x.id === parseInt(req.params.id));
-    if (!s) return res.status(404).json({ error: 'Not found' });
-    const body = { ...req.body };
-    if (Array.isArray(body.slots)) body.slots = body.slots.filter(sl => sl.name).map(sl => ({ name: sl.name, price: parseFloat(sl.price) || 0 }));
-    Object.assign(s, body, { id: s.id });
-    saveStore(); res.json(s);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/boost-slots/:id', async (req, res) => {
-  try {
-    const s = store.boostSlots.find(x => x.id === parseInt(req.params.id));
-    if (!s) return res.status(404).json({ error: 'Not found' });
-    if (s.discordMessageIds && s.discordMessageIds.length && client.isReady()) {
-      const channelId = store.settings.boostSlotChannelId || store.settings.accountsChannelId;
-      const ch = client.channels.cache.get(channelId);
-      if (ch) for (const mid of s.discordMessageIds) { try { await ch.messages.delete(mid); } catch(e){} }
-    }
-    store.boostSlots = store.boostSlots.filter(x => x.id !== parseInt(req.params.id));
-    saveStore(); res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/boost-slots/:id/repost', async (req, res) => {
-  try {
-    const s = store.boostSlots.find(x => x.id === parseInt(req.params.id));
-    if (!s) return res.status(404).json({ error: 'Not found' });
-    const channelId = store.settings.boostSlotChannelId || store.settings.accountsChannelId;
-    if (!channelId || !client.isReady()) return res.status(400).json({ error: 'Bot not ready or channel not set' });
-    const ch = client.channels.cache.get(channelId);
-    if (!ch) return res.status(400).json({ error: 'Channel not found' });
-    for (const mid of s.discordMessageIds) { try { await ch.messages.delete(mid); } catch(e){} }
-    s.discordMessageIds = [];
-    await postBoostSlotToDiscord(ch, s);
-    saveStore();
-    addLog('INFO', `Boost Slot service ${s.id} re-posted to Discord`);
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-async function postBoostSlotToDiscord(channel, service) {
-  const brandColor = store.settings.color || 0x9b59ff;
-  const cur = store.settings.currency;
-  const allImages = service.images || [];
-  const mainEmbed = new EmbedBuilder()
-    .setColor(brandColor)
-    .setTitle('⚡ ' + service.titleEn)
-    .setDescription(
-      (service.titleAr ? '**' + service.titleAr + '**\n' : '') +
-      '```yaml\n' + service.game + ' • boosting```\n' +
-      (service.descriptionEn ? '📋 ' + service.descriptionEn + '\n' : '') +
-      (service.descriptionAr ? '📋 ' + service.descriptionAr + '\n' : '')
-    )
-    .addFields(
-      { name: '🎮 Game', value: service.game, inline: true },
-      { name: '⏱️ ETA', value: service.eta, inline: true },
-      { name: '💰 Starting from', value: '```fix\n' + cur + service.price.toFixed(2) + '```', inline: false }
-    );
-  // Show slots
-  if (service.slots && service.slots.length > 0) {
-    const slotsText = service.slots.map(s => '`' + s.name + '` (' + cur + s.price.toFixed(2) + ')').join('\n');
-    mainEmbed.addFields({ name: '⚡ Available Options', value: slotsText, inline: false });
-  }
-  mainEmbed.setFooter({ text: store.settings.storeName + ' • Boosting • ID: ' + service.id });
-  mainEmbed.setTimestamp();
-
-  const files = [];
-  const embeds = [mainEmbed];
-  let imgCount = 0;
-
-  if (allImages.length === 0) {
-    const imgPath = path.join(__dirname, 'images', 'boosting.png');
-    if (fs.existsSync(imgPath)) {
-      const fileName = 'boost_' + service.id + '_default.png';
-      files.push(new AttachmentBuilder(fs.readFileSync(imgPath), { name: fileName }));
-      mainEmbed.setImage('attachment://' + fileName);
-      imgCount = 1;
-    }
-  }
-
-  for (let i = 0; i < allImages.length; i++) {
-    const parsed = base64ToBuffer(allImages[i]);
-    if (!parsed) continue;
-    const fileName = 'boost_' + service.id + '_' + (i + 1) + '.jpg';
-    files.push(new AttachmentBuilder(parsed.buffer, { name: fileName }));
-    imgCount++;
-    if (imgCount === 1) mainEmbed.setImage('attachment://' + fileName);
-    else embeds.push(new EmbedBuilder().setColor(brandColor).setImage('attachment://' + fileName));
-  }
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('orderboostslot_' + service.id).setLabel('اطلب الآن / Order Boosting').setStyle(ButtonStyle.Success).setEmoji('⚡')
-  );
-  const msg = await channel.send({ embeds, components: [row], files });
-  service.discordMessageIds.push(msg.id);
-  saveStore();
-}
 
 // ===== COUPONS =====
 app.get('/api/coupons', (req, res) => { try { res.json(store.coupons); } catch (e) { res.status(500).json({ error: e.message }); } });
@@ -2009,6 +1928,7 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply({ content: '🎫 تم إنشاء تذكرة خاصة بك: <#' + ticketChannel.id + '>', ephemeral: true });
       addLog('INFO', `Ticket ${ticketId} created for ${interaction.user.username} → ${acc.titleEn}`);
       sendLogToDiscord(`🎫 New ticket \`${ticketId}\` by **${interaction.user.username}** for **${acc.titleEn}** ($${acc.price})`);
+      notifyOwner("🛒 طلب جديد!", `العميل: **${interaction.user.username}**\nالمنتج: **${acc.titleEn}**\nالسعر: \`$${acc.price}\`\nرقم التذكرة: \`${ticketId}\``);
       return;
     }
 
@@ -2099,6 +2019,7 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true });
       addLog('INFO', `Pool ticket ${ticketId} for ${interaction.user.username} → ${pool.name}`);
       sendLogToDiscord(`⚡ Pool ticket \`${ticketId}\` by **${interaction.user.username}** for **${pool.name}** ($${pool.price})`);
+      notifyOwner("⚡ طلب جديد!", `العميل: **${interaction.user.username}**\nالمنتج: **${pool.name}**\nالسعر: \`$${pool.price}\`\nرقم التذكرة: \`${ticketId}\``);
       return;
     }
 
@@ -2190,6 +2111,7 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true });
       addLog('INFO', `Digital ticket ${ticketId} for ${interaction.user.username} → ${dig.titleEn}`);
       sendLogToDiscord(`🎫 Digital ticket \`${ticketId}\` by **${interaction.user.username}** for **${dig.titleEn}** ($${dig.price})`);
+      notifyOwner("🎫 طلب جديد!", `العميل: **${interaction.user.username}**\nالمنتج: **${dig.titleEn}**\nالسعر: \`$${dig.price}\`\nرقم التذكرة: \`${ticketId}\``);
       return;
     }
 
@@ -2977,6 +2899,7 @@ async function createCamoTicket(interaction, camo, gunIdx, selectedCamos, price)
   }
   addLog('INFO', `Camo ticket ${ticketId} for ${interaction.user.username} → ${camo.titleEn} (${choiceText}) $${price}`);
   sendLogToDiscord(`🎨 Camo ticket \`${ticketId}\` by **${interaction.user.username}** for **${camo.titleEn}** (${choiceText}) — $${price}`);
+  notifyOwner("🎨 طلب كاموهات!", `العميل: **${interaction.user.username}**\nالخدمة: **${camo.titleEn}**\nالتفاصيل: ${choiceText}\nالسعر: \`$${price}\`\nرقم التذكرة: \`${ticketId}\``);
 }
 
 // Helper: create boosting ticket (used by all boosting choice flows)
@@ -3074,6 +2997,7 @@ async function createBoostingTicket(interaction, boost, choices, price) {
   }
   addLog('INFO', `Boosting ticket ${ticketId} for ${interaction.user.username} → ${boost.titleEn} (${choiceText}) $${price}`);
   sendLogToDiscord(`🚀 Boosting ticket \`${ticketId}\` by **${interaction.user.username}** for **${boost.titleEn}** (${choiceText}) — $${price}`);
+  notifyOwner("🚀 طلب بوست!", `العميل: **${interaction.user.username}**\nالخدمة: **${boost.titleEn}**\nالتفاصيل: ${choiceText}\nالسعر: \`$${price}\`\nرقم التذكرة: \`${ticketId}\``);
 }
 
 // Helper: create payment request record
@@ -3154,6 +3078,7 @@ client.on('messageCreate', async (message) => {
 
         addLog('INFO', `Receipt uploaded in ticket ${ticket.id} by ${message.author.username} for ${pr.id}`);
         sendLogToDiscord(`📨 Receipt uploaded in \`${ticket.id}\` for \`${pr.id}\` — **${ticket.accountTitle}** ($${pr.discountedAmount || pr.amount})`);
+        notifyOwner("📨 إيصال جديد!", `العميل: **${message.author.username}**\nالمنتج: **${ticket.accountTitle}**\nالمبلغ: \`$${pr.discountedAmount || pr.amount}\`\nرقم العملية: \`${pr.id}\`\nرقم التذكرة: \`${ticket.id}\``);
       }
     }
   }
