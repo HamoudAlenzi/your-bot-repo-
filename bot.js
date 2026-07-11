@@ -58,6 +58,8 @@ const DEFAULT_STORE = {
     ticketCategoryId: '',
     logChannelId: '',
     ownerId: '',
+    orderAlertWebhook: '',   // IFTTT / custom webhook URL for WhatsApp/phone call alerts on new orders
+    orderAlertsEnabled: true, // master toggle for order alerts (DM + @here + webhook)
     staffRoleIds: [], // additional roles that can see all tickets
     termsAr: 'الشروط العامة\n━━━━━━━━━━━━━━━\n▪️ يتم تسليم الحساب فور تأكيد الدفع\n▪️ الضمان يبدأ من تاريخ الشراء\n▪️ لا يوجد استرداد بعد تسليم الحساب\n▪️ جميع المبيعات نهائية',
     termsEn: 'General Terms\n━━━━━━━━━━━━━━━\n▪️ Account delivered immediately after payment confirmation\n▪️ Warranty starts from purchase date\n▪️ No refunds after account delivery\n▪️ All sales are final',
@@ -130,6 +132,45 @@ function sendLogToDiscord(msg) {
   if (chId && client.isReady()) {
     const ch = client.channels.cache.get(chId);
     if (ch) ch.send(msg).catch(() => {});
+  }
+}
+
+// ===== ORDER ALERTS: DM owner + @here ping in log channel + optional webhook =====
+function sendOrderAlert(msg) {
+  if (!store.settings.orderAlertsEnabled) return;
+  const settings = store.settings;
+
+  // 1) @here ping + message in log channel
+  const logChId = settings.logChannelId;
+  if (logChId && client.isReady()) {
+    const ch = client.channels.cache.get(logChId);
+    if (ch) ch.send('@here ' + msg).catch(() => {});
+  }
+
+  // 2) DM the store owner
+  if (settings.ownerId && client.isReady()) {
+    client.users.fetch(settings.ownerId).then(user => {
+      const dmEmbed = new EmbedBuilder()
+        .setColor(0xf0c040) // gold
+        .setTitle('🛒 New Order Alert')
+        .setDescription(msg)
+        .setFooter({ text: settings.storeName })
+        .setTimestamp();
+      user.send({ embeds: [dmEmbed] }).catch(() => {});
+    }).catch(() => {});
+  }
+
+  // 3) Webhook POST (IFTTT, WhatsApp, phone call, etc.)
+  if (settings.orderAlertWebhook) {
+    fetch(settings.orderAlertWebhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        value1: settings.storeName,
+        value2: msg.replace(/\*\*/g, '').replace(/`/g, '').substring(0, 500),
+        value3: new Date().toISOString()
+      })
+    }).catch(() => {});
   }
 }
 
@@ -767,7 +808,7 @@ app.post('/api/payments/:id/approve', async (req, res) => {
     await sendBuyerDM();
 
 
-    sendLogToDiscord(`✅ Payment approved: \`${pr.id}\` for **${pr.accountTitle}** ($${finalAmount}) by ${pr.userName}`);
+    sendOrderAlert(`✅ Payment approved: \`${pr.id}\` for **${pr.accountTitle}** ($${finalAmount}) by ${pr.userName}`);
     addLog('INFO', `Payment approved & delivered: ${pr.id}`);
     saveStore();
     res.json(pr);
@@ -2008,7 +2049,7 @@ client.on('interactionCreate', async (interaction) => {
 
       await interaction.reply({ content: '🎫 تم إنشاء تذكرة خاصة بك: <#' + ticketChannel.id + '>', ephemeral: true });
       addLog('INFO', `Ticket ${ticketId} created for ${interaction.user.username} → ${acc.titleEn}`);
-      sendLogToDiscord(`🎫 New ticket \`${ticketId}\` by **${interaction.user.username}** for **${acc.titleEn}** ($${acc.price})`);
+      sendOrderAlert(`🎫 New ticket \`${ticketId}\` by **${interaction.user.username}** for **${acc.titleEn}** ($${acc.price})`);
       return;
     }
 
@@ -2098,7 +2139,7 @@ client.on('interactionCreate', async (interaction) => {
 
       await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true });
       addLog('INFO', `Pool ticket ${ticketId} for ${interaction.user.username} → ${pool.name}`);
-      sendLogToDiscord(`⚡ Pool ticket \`${ticketId}\` by **${interaction.user.username}** for **${pool.name}** ($${pool.price})`);
+      sendOrderAlert(`⚡ Pool ticket \`${ticketId}\` by **${interaction.user.username}** for **${pool.name}** ($${pool.price})`);
       return;
     }
 
@@ -2189,7 +2230,7 @@ client.on('interactionCreate', async (interaction) => {
 
       await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true });
       addLog('INFO', `Digital ticket ${ticketId} for ${interaction.user.username} → ${dig.titleEn}`);
-      sendLogToDiscord(`🎫 Digital ticket \`${ticketId}\` by **${interaction.user.username}** for **${dig.titleEn}** ($${dig.price})`);
+      sendOrderAlert(`🎫 Digital ticket \`${ticketId}\` by **${interaction.user.username}** for **${dig.titleEn}** ($${dig.price})`);
       return;
     }
 
@@ -2976,7 +3017,7 @@ async function createCamoTicket(interaction, camo, gunIdx, selectedCamos, price)
     await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true }).catch(()=>{});
   }
   addLog('INFO', `Camo ticket ${ticketId} for ${interaction.user.username} → ${camo.titleEn} (${choiceText}) $${price}`);
-  sendLogToDiscord(`🎨 Camo ticket \`${ticketId}\` by **${interaction.user.username}** for **${camo.titleEn}** (${choiceText}) — $${price}`);
+  sendOrderAlert(`🎨 Camo ticket \`${ticketId}\` by **${interaction.user.username}** for **${camo.titleEn}** (${choiceText}) — $${price}`);
 }
 
 // Helper: create boosting ticket (used by all boosting choice flows)
@@ -3073,7 +3114,7 @@ async function createBoostingTicket(interaction, boost, choices, price) {
     await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true }).catch(()=>{});
   }
   addLog('INFO', `Boosting ticket ${ticketId} for ${interaction.user.username} → ${boost.titleEn} (${choiceText}) $${price}`);
-  sendLogToDiscord(`🚀 Boosting ticket \`${ticketId}\` by **${interaction.user.username}** for **${boost.titleEn}** (${choiceText}) — $${price}`);
+  sendOrderAlert(`🚀 Boosting ticket \`${ticketId}\` by **${interaction.user.username}** for **${boost.titleEn}** (${choiceText}) — $${price}`);
 }
 
 // Helper: create payment request record
@@ -3153,7 +3194,7 @@ client.on('messageCreate', async (message) => {
         await message.reply({ embeds: [embed] });
 
         addLog('INFO', `Receipt uploaded in ticket ${ticket.id} by ${message.author.username} for ${pr.id}`);
-        sendLogToDiscord(`📨 Receipt uploaded in \`${ticket.id}\` for \`${pr.id}\` — **${ticket.accountTitle}** ($${pr.discountedAmount || pr.amount})`);
+        sendOrderAlert(`📨 Receipt uploaded in \`${ticket.id}\` for \`${pr.id}\` — **${ticket.accountTitle}** ($${pr.discountedAmount || pr.amount})`);
       }
     }
   }
