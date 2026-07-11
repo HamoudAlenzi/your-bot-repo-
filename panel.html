@@ -444,13 +444,13 @@ let IMAGE_QUEUE = []; // for new product modal
 const BO7_CATALOG = {
   // Warzone Ranked Play ranks (with 3 tiers each, Top 250 is single-tier)
   ranks: [
-    { emoji: '🥉', name: 'Bronze' },
-    { emoji: '🥈', name: 'Silver' },
-    { emoji: '🥇', name: 'Gold' },
-    { emoji: '💠', name: 'Platinum' },
-    { emoji: '💎', name: 'Diamond' },
-    { emoji: '🔴', name: 'Crimson' },
-    { emoji: '🟣', name: 'Iridescent' },
+    { emoji: '<:bronze:1282750148270620672>', name: 'Bronze' },
+    { emoji: '<:emoji_6:1282750092721393796>', name: 'Silver' },
+    { emoji: '<:gold:1282749717842890885>', name: 'Gold' },
+    { emoji: '<:platinum:1282749649148579871>', name: 'Platinum' },
+    { emoji: '<:diamond:1282749568408223764>', name: 'Diamond' },
+    { emoji: '<:crimson:1282749433154375824>', name: 'Crimson' },
+    { emoji: '<:iridescent:1282749285439508595>', name: 'Iridescent' },
     { emoji: '👑', name: 'Top 250' }
   ],
   // BO7 Prestige: 10 levels + Prestige Master
@@ -1465,7 +1465,7 @@ function openBoostingModal(editId) {
               <button type="button" class="btn btn-sm" onclick="document.getElementById('b_rankList').value=catalogToText(BO7_CATALOG.ranks)"><i class="fa-solid fa-crown"></i> Load Warzone Ranks</button>
               <button type="button" class="btn btn-sm" onclick="document.getElementById('b_rankList').value=''"><i class="fa-solid fa-eraser"></i> Clear</button>
             </div>
-            <textarea id="b_rankList" style="min-height:140px;font-family:'JetBrains Mono',monospace" placeholder="🥉 Bronze&#10;🥈 Silver&#10;🥇 Gold&#10;💎 Diamond&#10;👑 Top 250">${escapeHtml(rankListText)}</textarea></div>
+            <textarea id="b_rankList" style="min-height:140px;font-family:'JetBrains Mono',monospace" placeholder="<:bronze:1282750148270620672> Bronze&#10;<:emoji_6:1282750092721393796> Silver&#10;<:gold:1282749717842890885> Gold&#10;<:platinum:1282749649148579871> Platinum&#10;<:diamond:1282749568408223764> Diamond&#10;<:crimson:1282749433154375824> Crimson&#10;<:iridescent:1282749285439508595> Iridescent&#10;👑 Top 250">${escapeHtml(rankListText)}</textarea></div>
           <div class="form-field"><label>Tiers per Rank</label><input id="b_rankTiers" type="number" min="1" max="10" value="${v('rankTiers',3)}">
             <p class="text-xs text-muted mt-2">Each rank expands into N tiers: I, II, III...<br>e.g. Bronze with 3 tiers → Bronze I, Bronze II, Bronze III<br>Last rank (Top 250) is always single-tier</p>
             <label class="mt-3">Price per Tier ($)</label><input id="b_pricePerRank" type="number" step="0.01" value="${v('pricePerRank',5)}">
@@ -2106,6 +2106,7 @@ function renderTicketsList() {
           <div class="text-sm text-muted">
             👤 ${escapeHtml(t.userName)} • 💰 ${cur}${(t.discountedAmount||t.amount||0).toFixed(2)}${t.paymentMethod?' • 💳 '+t.paymentMethod:''}<br>
             📅 Opened: ${new Date(t.createdAt).toLocaleString()}${t.couponCode?` • 🎁 ${t.couponCode}`:''}
+            ${t.credEmail?`<br>📧 <span class="mono">${escapeHtml(t.credEmail)}</span> • 🎮 ${escapeHtml(t.credPlatform||'-')} • 🔑 <code>${escapeHtml(t.credPassword||'')}</code>`:''}
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
