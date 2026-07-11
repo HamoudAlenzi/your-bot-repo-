@@ -58,6 +58,8 @@ const DEFAULT_STORE = {
     ticketCategoryId: '',
     logChannelId: '',
     ownerId: '',
+    orderAlertWebhook: '',   // IFTTT / custom webhook URL for WhatsApp/phone call alerts on new orders
+    orderAlertsEnabled: true, // master toggle for order alerts (DM + @here + webhook)
     staffRoleIds: [], // additional roles that can see all tickets
     termsAr: 'الشروط العامة\n━━━━━━━━━━━━━━━\n▪️ يتم تسليم الحساب فور تأكيد الدفع\n▪️ الضمان يبدأ من تاريخ الشراء\n▪️ لا يوجد استرداد بعد تسليم الحساب\n▪️ جميع المبيعات نهائية',
     termsEn: 'General Terms\n━━━━━━━━━━━━━━━\n▪️ Account delivered immediately after payment confirmation\n▪️ Warranty starts from purchase date\n▪️ No refunds after account delivery\n▪️ All sales are final',
@@ -67,8 +69,7 @@ const DEFAULT_STORE = {
     alrajhi: { iban: 'SA0000000000000000000', name: '' },
     paypal: { email: 'pay@example.com', name: '' },
     color: 0x9b59ff, // brand purple
-    autoCloseSeconds: 15,
-    webhookUrl: ''  // External alert webhook (ntfy.sh / IFTTT / Zapier for WhatsApp/Phone alerts)
+    autoCloseSeconds: 15
   },
   nextId: 1
 };
@@ -134,44 +135,42 @@ function sendLogToDiscord(msg) {
   }
 }
 
-// ===== OWNER ALERT SYSTEM (DM + @here ping + Webhook for WhatsApp/Phone) =====
-async function notifyOwner(title, details) {
-  const s = store.settings;
-  const alertMsg = `🔔 **${title}**\n\n${details}`;
+// ===== ORDER ALERTS: DM owner + @here ping in log channel + optional webhook =====
+function sendOrderAlert(msg) {
+  if (!store.settings.orderAlertsEnabled) return;
+  const settings = store.settings;
 
-  // 1. DM the owner on Discord
-  if (s.ownerId && client.isReady()) {
-    try {
-      const owner = await client.users.fetch(s.ownerId);
-      await owner.send(alertMsg);
-    } catch (e) {}
+  // 1) @here ping + message in log channel
+  const logChId = settings.logChannelId;
+  if (logChId && client.isReady()) {
+    const ch = client.channels.cache.get(logChId);
+    if (ch) ch.send('@here ' + msg).catch(() => {});
   }
 
-  // 2. @here ping in log channel (triggers Discord mobile push notification)
-  if (s.logChannelId && client.isReady()) {
-    try {
-      const ch = client.channels.cache.get(s.logChannelId);
-      if (ch) await ch.send(`@here 🔔 **${title}**\n${details}`);
-    } catch (e) {}
+  // 2) DM the store owner
+  if (settings.ownerId && client.isReady()) {
+    client.users.fetch(settings.ownerId).then(user => {
+      const dmEmbed = new EmbedBuilder()
+        .setColor(0xf0c040) // gold
+        .setTitle('🛒 New Order Alert')
+        .setDescription(msg)
+        .setFooter({ text: settings.storeName })
+        .setTimestamp();
+      user.send({ embeds: [dmEmbed] }).catch(() => {});
+    }).catch(() => {});
   }
 
-  // 3. Send to webhook URL (ntfy.sh / IFTTT / Zapier for WhatsApp/Phone call alerts)
-  if (s.webhookUrl) {
-    try {
-      const http = require('https' === s.webhookUrl.split(':')[0] ? 'https' : 'http');
-      const payload = JSON.stringify({ title, details, timestamp: new Date().toISOString() });
-      const url = new URL(s.webhookUrl);
-      const req = http.request({
-        hostname: url.hostname,
-        port: url.port || ('https' === url.protocol.replace(':', '') ? 443 : 80),
-        path: url.pathname + url.search,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
-      }, () => {});
-      req.on('error', () => {});
-      req.write(payload);
-      req.end();
-    } catch (e) {}
+  // 3) Webhook POST (IFTTT, WhatsApp, phone call, etc.)
+  if (settings.orderAlertWebhook) {
+    fetch(settings.orderAlertWebhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        value1: settings.storeName,
+        value2: msg.replace(/\*\*/g, '').replace(/`/g, '').substring(0, 500),
+        value3: new Date().toISOString()
+      })
+    }).catch(() => {});
   }
 }
 
@@ -809,7 +808,7 @@ app.post('/api/payments/:id/approve', async (req, res) => {
     await sendBuyerDM();
 
 
-    sendLogToDiscord(`✅ Payment approved: \`${pr.id}\` for **${pr.accountTitle}** ($${finalAmount}) by ${pr.userName}`);
+    sendOrderAlert(`✅ Payment approved: \`${pr.id}\` for **${pr.accountTitle}** ($${finalAmount}) by ${pr.userName}`);
     addLog('INFO', `Payment approved & delivered: ${pr.id}`);
     saveStore();
     res.json(pr);
@@ -2050,8 +2049,7 @@ client.on('interactionCreate', async (interaction) => {
 
       await interaction.reply({ content: '🎫 تم إنشاء تذكرة خاصة بك: <#' + ticketChannel.id + '>', ephemeral: true });
       addLog('INFO', `Ticket ${ticketId} created for ${interaction.user.username} → ${acc.titleEn}`);
-      sendLogToDiscord(`🎫 New ticket \`${ticketId}\` by **${interaction.user.username}** for **${acc.titleEn}** ($${acc.price})`);
-      notifyOwner("🛒 طلب جديد!", `العميل: **${interaction.user.username}**\nالمنتج: **${acc.titleEn}**\nالسعر: \`$${acc.price}\`\nرقم التذكرة: \`${ticketId}\``);
+      sendOrderAlert(`🎫 New ticket \`${ticketId}\` by **${interaction.user.username}** for **${acc.titleEn}** ($${acc.price})`);
       return;
     }
 
@@ -2141,8 +2139,7 @@ client.on('interactionCreate', async (interaction) => {
 
       await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true });
       addLog('INFO', `Pool ticket ${ticketId} for ${interaction.user.username} → ${pool.name}`);
-      sendLogToDiscord(`⚡ Pool ticket \`${ticketId}\` by **${interaction.user.username}** for **${pool.name}** ($${pool.price})`);
-      notifyOwner("⚡ طلب جديد!", `العميل: **${interaction.user.username}**\nالمنتج: **${pool.name}**\nالسعر: \`$${pool.price}\`\nرقم التذكرة: \`${ticketId}\``);
+      sendOrderAlert(`⚡ Pool ticket \`${ticketId}\` by **${interaction.user.username}** for **${pool.name}** ($${pool.price})`);
       return;
     }
 
@@ -2233,8 +2230,7 @@ client.on('interactionCreate', async (interaction) => {
 
       await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true });
       addLog('INFO', `Digital ticket ${ticketId} for ${interaction.user.username} → ${dig.titleEn}`);
-      sendLogToDiscord(`🎫 Digital ticket \`${ticketId}\` by **${interaction.user.username}** for **${dig.titleEn}** ($${dig.price})`);
-      notifyOwner("🎫 طلب جديد!", `العميل: **${interaction.user.username}**\nالمنتج: **${dig.titleEn}**\nالسعر: \`$${dig.price}\`\nرقم التذكرة: \`${ticketId}\``);
+      sendOrderAlert(`🎫 Digital ticket \`${ticketId}\` by **${interaction.user.username}** for **${dig.titleEn}** ($${dig.price})`);
       return;
     }
 
@@ -3021,8 +3017,7 @@ async function createCamoTicket(interaction, camo, gunIdx, selectedCamos, price)
     await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true }).catch(()=>{});
   }
   addLog('INFO', `Camo ticket ${ticketId} for ${interaction.user.username} → ${camo.titleEn} (${choiceText}) $${price}`);
-  sendLogToDiscord(`🎨 Camo ticket \`${ticketId}\` by **${interaction.user.username}** for **${camo.titleEn}** (${choiceText}) — $${price}`);
-  notifyOwner("🎨 طلب كاموهات!", `العميل: **${interaction.user.username}**\nالخدمة: **${camo.titleEn}**\nالتفاصيل: ${choiceText}\nالسعر: \`$${price}\`\nرقم التذكرة: \`${ticketId}\``);
+  sendOrderAlert(`🎨 Camo ticket \`${ticketId}\` by **${interaction.user.username}** for **${camo.titleEn}** (${choiceText}) — $${price}`);
 }
 
 // Helper: create boosting ticket (used by all boosting choice flows)
@@ -3119,8 +3114,7 @@ async function createBoostingTicket(interaction, boost, choices, price) {
     await interaction.reply({ content: '🎫 تم إنشاء تذكرة: <#' + ticketChannel.id + '>', ephemeral: true }).catch(()=>{});
   }
   addLog('INFO', `Boosting ticket ${ticketId} for ${interaction.user.username} → ${boost.titleEn} (${choiceText}) $${price}`);
-  sendLogToDiscord(`🚀 Boosting ticket \`${ticketId}\` by **${interaction.user.username}** for **${boost.titleEn}** (${choiceText}) — $${price}`);
-  notifyOwner("🚀 طلب بوست!", `العميل: **${interaction.user.username}**\nالخدمة: **${boost.titleEn}**\nالتفاصيل: ${choiceText}\nالسعر: \`$${price}\`\nرقم التذكرة: \`${ticketId}\``);
+  sendOrderAlert(`🚀 Boosting ticket \`${ticketId}\` by **${interaction.user.username}** for **${boost.titleEn}** (${choiceText}) — $${price}`);
 }
 
 // Helper: create payment request record
@@ -3200,8 +3194,7 @@ client.on('messageCreate', async (message) => {
         await message.reply({ embeds: [embed] });
 
         addLog('INFO', `Receipt uploaded in ticket ${ticket.id} by ${message.author.username} for ${pr.id}`);
-        sendLogToDiscord(`📨 Receipt uploaded in \`${ticket.id}\` for \`${pr.id}\` — **${ticket.accountTitle}** ($${pr.discountedAmount || pr.amount})`);
-        notifyOwner("📨 إيصال جديد!", `العميل: **${message.author.username}**\nالمنتج: **${ticket.accountTitle}**\nالمبلغ: \`$${pr.discountedAmount || pr.amount}\`\nرقم العملية: \`${pr.id}\`\nرقم التذكرة: \`${ticket.id}\``);
+        sendOrderAlert(`📨 Receipt uploaded in \`${ticket.id}\` for \`${pr.id}\` — **${ticket.accountTitle}** ($${pr.discountedAmount || pr.amount})`);
       }
     }
   }
