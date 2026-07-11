@@ -1176,6 +1176,14 @@ app.post('/api/boosting', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Convert emoji (string or {id,name} object) to Discord-usable string
+function emojiToStr(e) {
+  if (!e) return '';
+  if (typeof e === 'string') return e;
+  if (e && e.id && e.name) return '<:' + e.name + ':' + e.id + '>';
+  return '';
+}
+
 // Parse rank entry: '🥉 Bronze' or 'Bronze' or '<:bronze:123> Bronze'
 function parseRankEntry(line) {
   if (typeof line === 'object') return line; // already parsed
@@ -2289,7 +2297,7 @@ client.on('interactionCreate', async (interaction) => {
           emoji: r.emoji || undefined
         }));
         const select = new StringSelectMenuBuilder().setCustomId('bstrf_' + boostId).setPlaceholder('اختر رتبتك الحالية / Select your CURRENT rank').addOptions(options);
-        const rankSummary = boost.rankList.map(r => (r.emoji ? r.emoji + ' ' : '') + '`' + r.name + '`').join(' → ');
+        const rankSummary = boost.rankList.map(r => emojiToStr(r.emoji) + '`' + r.name + '`').join(' → ');
         const embed = new EmbedBuilder().setColor(brandColor).setTitle('🚀 ' + boost.titleEn).setDescription(`**Choose your current rank to start.**\n📋 Available ranks: ${rankSummary}\n📊 ${(boost.rankTiers||3)} tiers each (I, II, III)\n💰 Price: \`${cur}${boost.pricePerRank} per tier\``).setFooter({ text: store.settings.storeName + ' • Step 1 of 2' });
         return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
       }
@@ -2603,11 +2611,11 @@ client.on('interactionCreate', async (interaction) => {
       for (let i = fromIdx + 1; i < expanded.length; i++) {
         const tiers = i - fromIdx;
         const price = boost.pricePerRank * tiers;
-        targetOptions.push({ label: (fromRank.emoji ? fromRank.emoji + ' ' : '') + fromRank.label + ' → ' + (expanded[i].emoji ? expanded[i].emoji + ' ' : '') + expanded[i].label, value: String(i), description: store.settings.currency + price.toFixed(2) + ' (' + tiers + ' tier' + (tiers>1?'s':'') + ')', emoji: expanded[i].emoji || undefined });
+        targetOptions.push({ label: emojiToStr(fromRank.emoji) + fromRank.label + ' → ' + emojiToStr(expanded[i].emoji) + expanded[i].label, value: String(i), description: store.settings.currency + price.toFixed(2) + ' (' + tiers + ' tier' + (tiers>1?'s':'') + ')', emoji: expanded[i].emoji && typeof expanded[i].emoji === 'object' ? { id: expanded[i].emoji.id, name: expanded[i].emoji.name } : expanded[i].emoji || undefined });
       }
       if (targetOptions.length === 0) return interaction.reply({ content: '❌ لا توجد رتب أعلى من رتبتك الحالية / No higher ranks available.', ephemeral: true });
       const select = new StringSelectMenuBuilder().setCustomId('bstrt_' + boostId + '_' + fromIdx).setPlaceholder('اختر الرتبة المستهدفة / Select TARGET rank').addOptions(targetOptions.slice(0, 25));
-      const embed = new EmbedBuilder().setColor(store.settings.color || 0x9b59ff).setTitle('📈 Current: ' + (fromRank.emoji ? fromRank.emoji + ' ' : '') + fromRank.label).setDescription('**Now select your target rank.**').setFooter({ text: store.settings.storeName + ' • Step 2 of 2' });
+      const embed = new EmbedBuilder().setColor(store.settings.color || 0x9b59ff).setTitle('📈 Current: ' + emojiToStr(fromRank.emoji) + fromRank.label).setDescription('**Now select your target rank.**').setFooter({ text: store.settings.storeName + ' • Step 2 of 2' });
       return interaction.update({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] });
     }
 
@@ -2626,8 +2634,8 @@ client.on('interactionCreate', async (interaction) => {
       const tiers = toIdx - fromIdx;
       const price = boost.pricePerRank * tiers;
       const cur = store.settings.currency;
-      const fromLabel = (fromRank.emoji ? fromRank.emoji + ' ' : '') + fromRank.label;
-      const toLabel = (toRank.emoji ? toRank.emoji + ' ' : '') + toRank.label;
+      const fromLabel = emojiToStr(fromRank.emoji) + fromRank.label;
+      const toLabel = emojiToStr(toRank.emoji) + toRank.label;
       const embed = new EmbedBuilder().setColor(store.settings.color || 0x9b59ff).setTitle('✅ Confirm Your Boost').setDescription(`**${boost.titleEn}**\n📈 Rank: \`${fromLabel}\` → \`${toLabel}\`\n📊 Tiers: ${tiers}\n💰 Price: \`${cur}${price.toFixed(2)}\`\n⏱️ ETA: \`${boost.eta}\`\n\nClick **Confirm** to create a ticket.`).setFooter({ text: store.settings.storeName });
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('bstrc_' + boostId + '_' + fromIdx + '_' + toIdx).setLabel('✅ تأكيد / Confirm').setStyle(ButtonStyle.Success),
@@ -2650,8 +2658,8 @@ client.on('interactionCreate', async (interaction) => {
       if (!fromRank || !toRank) return interaction.reply({ content: '❌ Invalid ranks.', ephemeral: true });
       const tiers = toIdx - fromIdx;
       const price = boost.pricePerRank * tiers;
-      const fromLabel = (fromRank.emoji ? fromRank.emoji + ' ' : '') + fromRank.label;
-      const toLabel = (toRank.emoji ? toRank.emoji + ' ' : '') + toRank.label;
+      const fromLabel = emojiToStr(fromRank.emoji) + fromRank.label;
+      const toLabel = emojiToStr(toRank.emoji) + toRank.label;
       await interaction.deferUpdate();
       return await createBoostingTicket(interaction, boost, { type: 'rank', fromRank: fromLabel, toRank: toLabel, tiers }, price);
     }
@@ -3076,7 +3084,7 @@ async function showGunSelectForBoost(interaction, boost, catIdx) {
     .setCustomId('bstg_' + boost.id + '_' + catIdx)
     .setPlaceholder('اختر السلاح / Select your gun')
     .addOptions(options);
-  const catName = (cat.emoji ? cat.emoji + ' ' : '') + cat.name;
+  const catName = emojiToStr(cat.emoji) + cat.name;
   const embed = new EmbedBuilder()
     .setColor(brandColor)
     .setTitle('🚀 ' + boost.titleEn)
@@ -3109,7 +3117,7 @@ async function showCamoMultiSelect(interaction, camo, gunIdx) {
     .setMinValues(1)
     .setMaxValues(Math.min(options.length, 25))
     .addOptions(options);
-  const gunName = gunIdx !== null && camo.gunList[gunIdx] ? (camo.gunList[gunIdx].emoji ? camo.gunList[gunIdx].emoji + ' ' : '') + camo.gunList[gunIdx].name : '';
+  const gunName = gunIdx !== null && camo.gunList[gunIdx] ? emojiToStr(camo.gunList[gunIdx].emoji) + camo.gunList[gunIdx].name : '';
   const embed = new EmbedBuilder()
     .setColor(brandColor)
     .setTitle('🎨 ' + camo.titleEn)
@@ -3401,6 +3409,37 @@ client.on('messageCreate', async (message) => {
 });
 
 // ===== SERVER START =====
+// Auto-migrate old rank emojis to custom Discord emojis
+const RANK_EMOJI_MAP = {
+  '🥉': { id: '1282750148270620672', name: 'bronze' },
+  '🥈': { id: '1282750092721393796', name: 'emoji_6' },
+  '🥇': { id: '1282749717842890885', name: 'gold' },
+  '💠': { id: '1282749649148579871', name: 'platinum' },
+  '💎': { id: '1282749568408223764', name: 'diamond' },
+  '🔴': { id: '1282749433154375824', name: 'crimson' },
+  '🟣': { id: '1282749285439508595', name: 'iridescent' }
+};
+let migrated = false;
+function migrateRankEmojis() {
+  if (migrated) return;
+  migrated = true;
+  let changed = false;
+  store.boostingServices.forEach(svc => {
+    if (!svc.rankList || !Array.isArray(svc.rankList)) return;
+    svc.rankList.forEach(rank => {
+      if (typeof rank.emoji === 'string' && RANK_EMOJI_MAP[rank.emoji]) {
+        rank.emoji = RANK_EMOJI_MAP[rank.emoji];
+        changed = true;
+      }
+    });
+  });
+  if (changed) {
+    saveStore();
+    console.log(`[${STORE_NAME}] Migrated rank emojis to custom Discord emojis`);
+  }
+}
+migrateRankEmojis();
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[${STORE_NAME}] Panel server running on port ${PORT}`);
