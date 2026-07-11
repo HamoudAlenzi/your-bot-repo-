@@ -23,6 +23,13 @@
   --transition:.18s cubic-bezier(.4,0,.2,1);
 }
 *{margin:0;padding:0;box-sizing:border-box}
+/* Toggle switch */
+.toggle{position:relative;display:inline-block;width:44px;height:24px;vertical-align:middle}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;cursor:pointer;inset:0;background:var(--bg-active);border-radius:24px;transition:.2s}
+.toggle-slider::before{content:'';position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s}
+.toggle input:checked+.toggle-slider{background:var(--green)}
+.toggle input:checked+.toggle-slider::before{transform:translateX(20px)}
 html,body{height:100%}
 body{font-family:'Inter','Cairo',sans-serif;background:var(--bg-deep);color:var(--fg);min-height:100vh;overflow-x:hidden;position:relative}
 body::before{content:'';position:fixed;inset:0;background:
@@ -2181,17 +2188,6 @@ function renderSettings(c) {
         <div class="form-field"><label>Auto-Close Ticket (seconds)</label><input id="s_autoClose" type="number" value="${s.autoCloseSeconds||15}"></div></div>
       </div>
       <div class="panel-card">
-        <h3><i class="fa-solid fa-bell"></i> تنبيهات الطلبات / Order Alerts</h3>
-        <div class="form-field"><label>Webhook URL (لإرسال تنبيهات للهاتف/واتساب)</label><input id="s_webhookUrl" value="${escapeAttr(s.webhookUrl||'')}" placeholder="https://ntfy.sh/your-topic أو IFTTT webhook URL">
-          <p class="text-xs text-muted mt-2">
-            <b>خيارات التنبيه:</b><br>
-            📱 <b>ntfy.sh</b> (مجاني — إشعارات فورية للهاتف): ضع <code>https://ntfy.sh/your-secret-topic</code> وحمّل تطبيق ntfy<br>
-            📲 <b>IFTTT</b> (واتساب/اتصال): اربط webhook مع IFTTT → Phone Call / WhatsApp<br>
-            🔔 <b>Discord DM + @here</b>: يعمل تلقائياً عند ضبط Owner ID + Log Channel
-          </p>
-        </div>
-      </div>
-      <div class="panel-card">
         <h3><i class="fa-solid fa-hashtag"></i> Discord Channels & Roles</h3>
         <div class="form-row"><div class="form-field"><label>Products Channel ID</label><input id="s_accCh" value="${escapeAttr(s.accountsChannelId||'')}" placeholder="1234567890"></div>
         <div class="form-field"><label>Ticket Category ID</label><input id="s_tktCat" value="${escapeAttr(s.ticketCategoryId||'')}" placeholder="1234567890"></div></div>
@@ -2200,8 +2196,23 @@ function renderSettings(c) {
         <div class="form-row"><div class="form-field"><label>Camo Unlock Channel ID</label><input id="s_camoCh" value="${escapeAttr(s.camoChannelId||'')}" placeholder="fallback to Products Channel"></div>
         <div class="form-field"><label>BOOSTING Channel ID</label><input id="s_boostSlotCh" value="${escapeAttr(s.boostSlotChannelId||'')}" placeholder="fallback to Products Channel"></div></div>
         <div class="form-field"><label>Log Channel ID</label><input id="s_logCh" value="${escapeAttr(s.logChannelId||'')}" placeholder="1234567890"></div></div>
-        <div class="form-row"><div class="form-field"><label>Owner Discord ID</label><input id="s_owner" value="${escapeAttr(s.ownerId||'')}" placeholder="Your Discord ID"></div>
+        <div class="form-row"><div class="form-field"><label>Owner Discord ID</label><input id="s_owner" value="${escapeAttr(s.ownerId||'')}" placeholder="Your Discord ID">
+          <p class="text-xs text-muted mt-2">Receives DM alerts for every new order + payment approval.</p></div>
         <div class="form-field"><label>Staff Role IDs (comma-separated)</label><input id="s_staff" value="${escapeAttr((s.staffRoleIds||[]).join(','))}" placeholder="123,456,789"></div></div>
+      </div>
+      <div class="panel-card">
+        <h3><i class="fa-solid fa-bell"></i> Order Alerts</h3>
+        <p class="text-sm text-muted mb-3">Get notified instantly when a new order is placed or payment is approved. Alerts fire via 3 channels simultaneously.</p>
+        <div class="form-row"><div class="form-field"><label>Enable Order Alerts</label>
+          <label class="toggle" style="margin-top:4px"><input type="checkbox" id="s_alertsOn" ${s.orderAlertsEnabled!==false?'checked':''}><span class="toggle-slider"></span></label>
+          <p class="text-xs text-muted mt-2">Master toggle for all order alerts.</p></div>
+        <div class="form-field"><label>Webhook URL (IFTTT / WhatsApp / Phone Call)</label><input id="s_webhook" value="${escapeAttr(s.orderAlertWebhook||'')}" placeholder="https://maker.ifttt.com/trigger/...">
+          <p class="text-xs text-muted mt-2">POSTs <code>{value1: store, value2: message, value3: timestamp}</code> on every order. Works with IFTTT, CallMeBot, Twilio, etc.</p></div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <span class="badge delivered" style="font-size:11px"><i class="fa-solid fa-envelope"></i> DM to Owner</span>
+          <span class="badge available" style="font-size:11px"><i class="fa-solid fa-at"></i> @here in Log Channel</span>
+          <span class="badge pending" style="font-size:11px"><i class="fa-solid fa-globe"></i> Webhook POST</span>
+        </div>
       </div>
       <div class="panel-card">
         <h3><i class="fa-solid fa-credit-card"></i> Payment Methods</h3>
@@ -2239,10 +2250,10 @@ async function saveSettings() {
   const data = {
     storeName: val('s_storeName'), currency: val('s_currency'),
     color, autoCloseSeconds: parseInt(val('s_autoClose')) || 15,
-    webhookUrl: val('s_webhookUrl'),
     accountsChannelId: val('s_accCh'), digitalChannelId: val('s_digCh'), boostingChannelId: val('s_boostCh'), camoChannelId: val('s_camoCh'), boostSlotChannelId: val('s_boostSlotCh'),
     ticketCategoryId: val('s_tktCat'),
     logChannelId: val('s_logCh'), ownerId: val('s_owner'), staffRoleIds: staff,
+    orderAlertWebhook: val('s_webhook'), orderAlertsEnabled: document.getElementById('s_alertsOn').checked,
     stcPay: { number: val('s_stcNum'), name: val('s_stcName') },
     alrajhi: { iban: val('s_iban'), name: val('s_alrajhiName') },
     paypal: { email: val('s_paypal'), name: val('s_paypalName') },
