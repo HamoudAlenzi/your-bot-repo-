@@ -13,7 +13,7 @@ const fs = require('fs');
 const {
   Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder,
   ButtonStyle, Partials, StringSelectMenuBuilder, AttachmentBuilder,
-  PermissionFlagsBits, ChannelType
+  PermissionFlagsBits, ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle
 } = require('discord.js');
 
 // ===== CONFIG =====
@@ -721,7 +721,7 @@ app.post('/api/payments/:id/approve', async (req, res) => {
       if (ticketChannel) {
         let deliverEmbed;
         if (isCamo) {
-          // CAMO: payment confirmed, ask for account credentials
+          // CAMO: payment confirmed, show button to open credentials modal
           ticket.status = 'camo_in_progress';
           const camoSvc = store.camoServices.find(s => s.id === pr.camoServiceId);
           deliverEmbed = new EmbedBuilder()
@@ -735,17 +735,22 @@ app.post('/api/payments/:id/approve', async (req, res) => {
               `💰 المبلغ: \`${cur}${finalAmount.toFixed(2)}\`\n` +
               `🎫 رقم العملية: \`${pr.id}\`\n\n` +
               `**⏳ الخطوة التالية:**\n` +
-              `أرسل بيانات حسابك هنا لبدء فتح الكاموهات:\n` +
-              `📧 Email + 🔑 Password + أي معلومات مطلوبة\n\n` +
-              `⏱️ المدة المتوقعة: \`${camoSvc ? camoSvc.eta : '24-72 ساعة'}\`\n` +
-              `🎨 سيتم إشعارك فور اكتمال فتح الكاموهات!`
+              `اضغط الزر بالأسفل لإرسال بيانات حسابك.\n` +
+              `⏱️ المدة المتوقعة: \`${camoSvc ? camoSvc.eta : '24-72 ساعة'}\``
             )
             .setFooter({ text: storeName + ' • التذكرة مفتوحة حتى اكتمال الخدمة' })
             .setTimestamp();
-          await ticketChannel.send({ embeds: [deliverEmbed] });
+          const credButton = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('camocred_' + ticket.id)
+              .setLabel('أرسل بيانات الحساب')
+              .setEmoji('📧')
+              .setStyle(ButtonStyle.Primary)
+          );
+          await ticketChannel.send({ embeds: [deliverEmbed], components: [credButton] });
           addLog('INFO', `Camo ticket ${ticket.id} now in progress for ${pr.userName}`);
         } else if (isBoosting) {
-          // BOOSTING: payment confirmed, ask for account credentials
+          // BOOSTING: payment confirmed, show button to open credentials modal
           ticket.status = 'boosting_in_progress';
           deliverEmbed = new EmbedBuilder()
             .setColor(brandColor)
@@ -758,14 +763,19 @@ app.post('/api/payments/:id/approve', async (req, res) => {
               `💰 المبلغ: \`${cur}${finalAmount.toFixed(2)}\`\n` +
               `🎫 رقم العملية: \`${pr.id}\`\n\n` +
               `**⏳ الخطوة التالية:**\n` +
-              `أرسل بيانات حسابك هنا لبدء البوست:\n` +
-              `📧 Email + 🔑 Password + أي معلومات مطلوبة\n\n` +
-              `⏱️ المدة المتوقعة: \`${ticket.boostingEta || '24-48 ساعة'}\`\n` +
-              `🚀 سيتم إشعارك فور اكتمال البوست!`
+              `اضغط الزر بالأسفل لإرسال بيانات حسابك.\n` +
+              `⏱️ المدة المتوقعة: \`${ticket.boostingEta || '24-48 ساعة'}\``
             )
             .setFooter({ text: storeName + ' • التذكرة مفتوحة حتى اكتمال البوست' })
             .setTimestamp();
-          await ticketChannel.send({ embeds: [deliverEmbed] });
+          const credButton = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('boostcred_' + ticket.id)
+              .setLabel('أرسل بيانات الحساب')
+              .setEmoji('📧')
+              .setStyle(ButtonStyle.Primary)
+          );
+          await ticketChannel.send({ embeds: [deliverEmbed], components: [credButton] });
           addLog('INFO', `Boosting ticket ${ticket.id} now in progress for ${pr.userName}`);
         } else {
           // DELIVER product (account / pool / digital code)
@@ -2330,6 +2340,177 @@ client.on('interactionCreate', async (interaction) => {
       return await createBoostingTicket(interaction, boost, {}, boost.price);
     }
 
+    // ---- BOOSTING CREDENTIALS BUTTON → open modal ----
+    if (interaction.isButton() && interaction.customId.startsWith('boostcred_')) {
+      const ticketId = interaction.customId.replace('boostcred_', '');
+      const ticket = store.tickets.find(t => t.id === ticketId);
+      if (!ticket) return interaction.reply({ content: '❌ التذكرة غير موجودة / Ticket not found.', ephemeral: true });
+      if (ticket.userId !== interaction.user.id) return interaction.reply({ content: '❌ هذه التذكرة ليست لك / This is not your ticket.', ephemeral: true });
+
+      const modal = new ModalBuilder()
+        .setCustomId('boostcredmodal_' + ticketId)
+        .setTitle('أرسل بيانات حسابك — البوست');
+
+      const emailInput = new TextInputBuilder()
+        .setCustomId('cred_email')
+        .setLabel('الإيميل / Email')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('example@gmail.com')
+        .setRequired(true);
+
+      const passInput = new TextInputBuilder()
+        .setCustomId('cred_password')
+        .setLabel('كلمة المرور / Password')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('أدخل كلمة المرور هنا')
+        .setRequired(true);
+
+      const platformInput = new TextInputBuilder()
+        .setCustomId('cred_platform')
+        .setLabel('المنصة / Platform')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Steam / Battle.net / PlayStation / Xbox')
+        .setRequired(true);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(emailInput),
+        new ActionRowBuilder().addComponents(passInput),
+        new ActionRowBuilder().addComponents(platformInput)
+      );
+      await interaction.showModal(modal);
+      return;
+    }
+
+    // ---- CAMO CREDENTIALS BUTTON → open modal ----
+    if (interaction.isButton() && interaction.customId.startsWith('camocred_')) {
+      const ticketId = interaction.customId.replace('camocred_', '');
+      const ticket = store.tickets.find(t => t.id === ticketId);
+      if (!ticket) return interaction.reply({ content: '❌ التذكرة غير موجودة / Ticket not found.', ephemeral: true });
+      if (ticket.userId !== interaction.user.id) return interaction.reply({ content: '❌ هذه التذكرة ليست لك / This is not your ticket.', ephemeral: true });
+
+      const modal = new ModalBuilder()
+        .setCustomId('camocredmodal_' + ticketId)
+        .setTitle('أرسل بيانات حسابك — الكاموهات');
+
+      const emailInput = new TextInputBuilder()
+        .setCustomId('cred_email')
+        .setLabel('الإيميل / Email')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('example@gmail.com')
+        .setRequired(true);
+
+      const passInput = new TextInputBuilder()
+        .setCustomId('cred_password')
+        .setLabel('كلمة المرور / Password')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('أدخل كلمة المرور هنا')
+        .setRequired(true);
+
+      const platformInput = new TextInputBuilder()
+        .setCustomId('cred_platform')
+        .setLabel('المنصة / Platform')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Steam / Battle.net / PlayStation / Xbox')
+        .setRequired(true);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(emailInput),
+        new ActionRowBuilder().addComponents(passInput),
+        new ActionRowBuilder().addComponents(platformInput)
+      );
+      await interaction.showModal(modal);
+      return;
+    }
+
+    // ---- BOOSTING CREDENTIALS MODAL SUBMIT ----
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('boostcredmodal_')) {
+      const ticketId = interaction.customId.replace('boostcredmodal_', '');
+      const ticket = store.tickets.find(t => t.id === ticketId);
+      if (!ticket) return interaction.reply({ content: '❌ التذكرة غير موجودة.', ephemeral: true });
+
+      const email = interaction.fields.getTextInputValue('cred_email').trim();
+      const password = interaction.fields.getTextInputValue('cred_password').trim();
+      const platform = interaction.fields.getTextInputValue('cred_platform').trim();
+
+      // Save credentials to ticket
+      ticket.credEmail = email;
+      ticket.credPassword = password;
+      ticket.credPlatform = platform;
+      saveStore();
+
+      // Send confirmation embed in the ticket channel (public)
+      const confirmEmbed = new EmbedBuilder()
+        .setColor(0x3ddc84)
+        .setTitle('✅ تم استلام بيانات حسابك')
+        .setDescription(
+          `**شكراً ${interaction.user.username}! 👋**\n\n` +
+          `تم استلام بيانات حسابك بنجاح وسيبدأ فريقنا العمل فوراً.\n\n` +
+          `**📋 البيانات المرسلة:**\n` +
+          `📧 الإيميل: \`${email}\`\n` +
+          `🔑 كلمة المرور: \`||${password}||\`\n` +
+          `🎮 المنصة: \`${platform}\`\n\n` +
+          `⏱️ المدة المتوقعة: \`${ticket.boostingEta || '24-48 ساعة'}\`\n` +
+          `🚀 سيتم إشعارك فور اكتمال البوست!`
+        )
+        .setFooter({ text: store.settings.storeName + ' • جاري العمل على طلبك' })
+        .setTimestamp();
+
+      const ticketChannel = client.channels.cache.get(ticket.channelId);
+      if (ticketChannel) {
+        await ticketChannel.send({ embeds: [confirmEmbed] });
+      }
+
+      // Notify admin
+      sendOrderAlert(`📧 Boosting credentials submitted in \`${ticket.id}\` by **${interaction.user.username}** — ${platform}`);
+
+      addLog('INFO', `Boosting credentials submitted for ticket ${ticket.id}: ${email} (${platform})`);
+      await interaction.reply({ content: '✅ تم إرسال بيانات حسابك بنجاح! سيبدأ فريقنا العمل الآن.', ephemeral: true });
+      return;
+    }
+
+    // ---- CAMO CREDENTIALS MODAL SUBMIT ----
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('camocredmodal_')) {
+      const ticketId = interaction.customId.replace('camocredmodal_', '');
+      const ticket = store.tickets.find(t => t.id === ticketId);
+      if (!ticket) return interaction.reply({ content: '❌ التذكرة غير موجودة.', ephemeral: true });
+
+      const email = interaction.fields.getTextInputValue('cred_email').trim();
+      const password = interaction.fields.getTextInputValue('cred_password').trim();
+      const platform = interaction.fields.getTextInputValue('cred_platform').trim();
+
+      // Save credentials to ticket
+      ticket.credEmail = email;
+      ticket.credPassword = password;
+      ticket.credPlatform = platform;
+      saveStore();
+
+      const confirmEmbed = new EmbedBuilder()
+        .setColor(0x3ddc84)
+        .setTitle('✅ تم استلام بيانات حسابك')
+        .setDescription(
+          `**شكراً ${interaction.user.username}! 👋**\n\n` +
+          `تم استلام بيانات حسابك بنجاح وسيبدأ فريقنا العمل فوراً.\n\n` +
+          `**📋 البيانات المرسلة:**\n` +
+          `📧 الإيميل: \`${email}\`\n` +
+          `🔑 كلمة المرور: \`||${password}||\`\n` +
+          `🎮 المنصة: \`${platform}\`\n\n` +
+          `⏱️ المدة المتوقعة: \`24-72 ساعة\`\n` +
+          `🎨 سيتم إشعارك فور اكتمال فتح الكاموهات!`
+        )
+        .setFooter({ text: store.settings.storeName + ' • جاري العمل على طلبك' })
+        .setTimestamp();
+
+      const ticketChannel = client.channels.cache.get(ticket.channelId);
+      if (ticketChannel) {
+        await ticketChannel.send({ embeds: [confirmEmbed] });
+      }
+
+      sendOrderAlert(`📧 Camo credentials submitted in \`${ticket.id}\` by **${interaction.user.username}** — ${platform}`);
+      addLog('INFO', `Camo credentials submitted for ticket ${ticket.id}: ${email} (${platform})`);
+      await interaction.reply({ content: '✅ تم إرسال بيانات حسابك بنجاح! سيبدأ فريقنا العمل الآن.', ephemeral: true });
+      return;
+    }
+
     // ---- ORDER CAMO BUTTON → customer choice flow (pick gun → multi-select camos → confirm) ----
     if (interaction.isButton() && interaction.customId.startsWith('ordercamo_')) {
       const camoId = parseInt(interaction.customId.split('_')[1]);
@@ -2768,7 +2949,6 @@ client.on('interactionCreate', async (interaction) => {
       if (!ticket) return interaction.reply({ content: '❌ Ticket not found', ephemeral: true });
       if (ticket.couponCode) return interaction.reply({ content: '✅ تم تطبيق كود خصم بالفعل: `' + ticket.couponCode + '`', ephemeral: true });
 
-      const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
       const modal = new ModalBuilder()
         .setCustomId('couponmodal_' + ticketId)
         .setTitle('🎁 كود الخصم / Coupon Code');
