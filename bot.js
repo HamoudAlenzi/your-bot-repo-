@@ -43,6 +43,7 @@ const DEFAULT_STORE = {
   digitalProducts: [],   // PSN cards, Xbox subs, Netflix, CD keys — instant code delivery
   boostingServices: [],  // CoD/Warzone rank, prestige, gun level boosting — service-based
   camoServices: [],      // CoD/Warzone weapon camo unlock — admin adds camo names, customer picks
+  boostSlots: [],        // Customizable boosting slots — admin defines up to 5 options per service
   paymentRequests: [],
   tickets: [],
   logs: [],
@@ -53,6 +54,7 @@ const DEFAULT_STORE = {
     digitalChannelId: '',     // channel for Digital Products posts (fallback: accountsChannelId)
     boostingChannelId: '',   // channel for Boosting Services posts (fallback: accountsChannelId)
     camoChannelId: '',       // channel for Camo Unlock posts (fallback: accountsChannelId)
+    boostSlotChannelId: '',   // channel for Boosting Slots posts (fallback: accountsChannelId)
     ticketCategoryId: '',
     logChannelId: '',
     ownerId: '',
@@ -66,7 +68,7 @@ const DEFAULT_STORE = {
     paypal: { email: 'pay@example.com', name: '' },
     color: 0x9b59ff, // brand purple
     autoCloseSeconds: 15,
-    webhookUrl: ''  // External alert webhook (IFTTT/Zapier/ntfy.sh for WhatsApp/Phone alerts)
+    webhookUrl: ''  // External alert webhook (ntfy.sh / IFTTT / Zapier for WhatsApp/Phone alerts)
   },
   nextId: 1
 };
@@ -153,7 +155,7 @@ async function notifyOwner(title, details) {
     } catch (e) {}
   }
 
-  // 3. Send to webhook URL (connect to IFTTT/Zapier/ntfy.sh for WhatsApp/Phone call alerts)
+  // 3. Send to webhook URL (ntfy.sh / IFTTT / Zapier for WhatsApp/Phone call alerts)
   if (s.webhookUrl) {
     try {
       const http = require('https' === s.webhookUrl.split(':')[0] ? 'https' : 'http');
@@ -256,6 +258,7 @@ app.get('/api/stats', (req, res) => {
       boostingServices: store.boostingServices.length,
       activeBoosts: store.tickets.filter(t => t.status === 'boosting_in_progress').length,
       camoServices: store.camoServices.length,
+      boostSlots: store.boostSlots.length,
       botOnline: client.isReady(),
       // Sales chart (last 14 days)
       salesChart: buildSalesChart(delivered, 14),
@@ -1523,15 +1526,6 @@ async function postCamoToDiscord(channel, service) {
       { name: '⏱️ ETA', value: service.eta, inline: true },
       { name: '💰 Starting from', value: '```fix\n' + cur + service.pricePerCamo.toFixed(2) + ' per camo```', inline: false }
     );
-  // Show camo list with emojis
-  if (service.camoList && service.camoList.length > 0) {
-    const camosText = service.camoList.slice(0, 20).map(c => {
-      const em = c.emoji ? (typeof c.emoji === 'object' ? '<:'+c.emoji.name+':'+c.emoji.id+'>' : c.emoji) + ' ' : '';
-      const p = c.price !== null && c.price !== undefined ? c.price : service.pricePerCamo;
-      return em + '`' + c.name + '` (' + cur + p.toFixed(2) + ')';
-    }).join(', ');
-    mainEmbed.addFields({ name: '🎨 Available Camos', value: camosText + (service.camoList.length > 20 ? '\n*(+' + (service.camoList.length - 20) + ' more)*' : ''), inline: false });
-  }
   // Show gun list if defined
   if (service.gunList && service.gunList.length > 0) {
     const gunsText = service.gunList.slice(0, 20).map(g => {
@@ -1681,6 +1675,135 @@ app.post('/api/camo/:id/complete', async (req, res) => {
     res.json({ success: true, ticketId: ticket.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ===== BOOSTING SLOTS (customizable 5-slot boosting services) =====
+app.get('/api/boost-slots', (req, res) => { try { res.json(store.boostSlots); } catch (e) { res.status(500).json({ error: e.message }); } });
+
+app.post('/api/boost-slots', async (req, res) => {
+  try {
+    const { titleEn, titleAr, game, price, slots, eta, descriptionEn, descriptionAr, images } = req.body;
+    if (!titleEn) return res.status(400).json({ error: 'Title required' });
+    const service = {
+      id: genId(), titleEn, titleAr: titleAr || '',
+      game: game || 'Call of Duty',
+      price: parseFloat(price) || 0,
+      slots: Array.isArray(slots) ? slots.filter(s => s.name).map(s => ({ name: s.name, price: parseFloat(s.price) || 0 })) : [],
+      eta: eta || '24-48 hours',
+      descriptionEn: descriptionEn || '', descriptionAr: descriptionAr || '',
+      images: Array.isArray(images) ? images : [],
+      status: 'active',
+      createdAt: new Date().toISOString(), discordMessageIds: []
+    };
+    store.boostSlots.push(service);
+    saveStore();
+    const channelId = store.settings.boostSlotChannelId || store.settings.accountsChannelId;
+    if (channelId && client.isReady()) {
+      const channel = client.channels.cache.get(channelId);
+      if (channel) await postBoostSlotToDiscord(channel, service).catch(e => addLog('ERROR', 'Boost Slot post failed: ' + e.message));
+    }
+    addLog('INFO', `Boosting Slot service created: ${titleEn}`);
+    res.json(service);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/boost-slots/:id', (req, res) => {
+  try {
+    const s = store.boostSlots.find(x => x.id === parseInt(req.params.id));
+    if (!s) return res.status(404).json({ error: 'Not found' });
+    const body = { ...req.body };
+    if (Array.isArray(body.slots)) body.slots = body.slots.filter(sl => sl.name).map(sl => ({ name: sl.name, price: parseFloat(sl.price) || 0 }));
+    Object.assign(s, body, { id: s.id });
+    saveStore(); res.json(s);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/boost-slots/:id', async (req, res) => {
+  try {
+    const s = store.boostSlots.find(x => x.id === parseInt(req.params.id));
+    if (!s) return res.status(404).json({ error: 'Not found' });
+    if (s.discordMessageIds && s.discordMessageIds.length && client.isReady()) {
+      const channelId = store.settings.boostSlotChannelId || store.settings.accountsChannelId;
+      const ch = client.channels.cache.get(channelId);
+      if (ch) for (const mid of s.discordMessageIds) { try { await ch.messages.delete(mid); } catch(e){} }
+    }
+    store.boostSlots = store.boostSlots.filter(x => x.id !== parseInt(req.params.id));
+    saveStore(); res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/boost-slots/:id/repost', async (req, res) => {
+  try {
+    const s = store.boostSlots.find(x => x.id === parseInt(req.params.id));
+    if (!s) return res.status(404).json({ error: 'Not found' });
+    const channelId = store.settings.boostSlotChannelId || store.settings.accountsChannelId;
+    if (!channelId || !client.isReady()) return res.status(400).json({ error: 'Bot not ready or channel not set' });
+    const ch = client.channels.cache.get(channelId);
+    if (!ch) return res.status(400).json({ error: 'Channel not found' });
+    for (const mid of s.discordMessageIds) { try { await ch.messages.delete(mid); } catch(e){} }
+    s.discordMessageIds = [];
+    await postBoostSlotToDiscord(ch, s);
+    saveStore();
+    addLog('INFO', `Boost Slot service ${s.id} re-posted to Discord`);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+async function postBoostSlotToDiscord(channel, service) {
+  const brandColor = store.settings.color || 0x9b59ff;
+  const cur = store.settings.currency;
+  const allImages = service.images || [];
+  const mainEmbed = new EmbedBuilder()
+    .setColor(brandColor)
+    .setTitle('⚡ ' + service.titleEn)
+    .setDescription(
+      (service.titleAr ? '**' + service.titleAr + '**\n' : '') +
+      '```yaml\n' + service.game + ' • boosting```\n' +
+      (service.descriptionEn ? '📋 ' + service.descriptionEn + '\n' : '') +
+      (service.descriptionAr ? '📋 ' + service.descriptionAr + '\n' : '')
+    )
+    .addFields(
+      { name: '🎮 Game', value: service.game, inline: true },
+      { name: '⏱️ ETA', value: service.eta, inline: true },
+      { name: '💰 Starting from', value: '```fix\n' + cur + service.price.toFixed(2) + '```', inline: false }
+    );
+  // Show slots
+  if (service.slots && service.slots.length > 0) {
+    const slotsText = service.slots.map(s => '`' + s.name + '` (' + cur + s.price.toFixed(2) + ')').join('\n');
+    mainEmbed.addFields({ name: '⚡ Available Options', value: slotsText, inline: false });
+  }
+  mainEmbed.setFooter({ text: store.settings.storeName + ' • Boosting • ID: ' + service.id });
+  mainEmbed.setTimestamp();
+
+  const files = [];
+  const embeds = [mainEmbed];
+  let imgCount = 0;
+
+  if (allImages.length === 0) {
+    const imgPath = path.join(__dirname, 'images', 'boosting.png');
+    if (fs.existsSync(imgPath)) {
+      const fileName = 'boost_' + service.id + '_default.png';
+      files.push(new AttachmentBuilder(fs.readFileSync(imgPath), { name: fileName }));
+      mainEmbed.setImage('attachment://' + fileName);
+      imgCount = 1;
+    }
+  }
+
+  for (let i = 0; i < allImages.length; i++) {
+    const parsed = base64ToBuffer(allImages[i]);
+    if (!parsed) continue;
+    const fileName = 'boost_' + service.id + '_' + (i + 1) + '.jpg';
+    files.push(new AttachmentBuilder(parsed.buffer, { name: fileName }));
+    imgCount++;
+    if (imgCount === 1) mainEmbed.setImage('attachment://' + fileName);
+    else embeds.push(new EmbedBuilder().setColor(brandColor).setImage('attachment://' + fileName));
+  }
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('orderboostslot_' + service.id).setLabel('اطلب الآن / Order Boosting').setStyle(ButtonStyle.Success).setEmoji('⚡')
+  );
+  const msg = await channel.send({ embeds, components: [row], files });
+  service.discordMessageIds.push(msg.id);
+  saveStore();
+}
 
 // ===== COUPONS =====
 app.get('/api/coupons', (req, res) => { try { res.json(store.coupons); } catch (e) { res.status(500).json({ error: e.message }); } });
