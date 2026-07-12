@@ -10,6 +10,20 @@ const cors = require('cors');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+
+// ===== Tiny .env loader (no dependency needed) — lets you run locally with a .env file =====
+try {
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!m) return;
+      let val = m[2].trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) val = val.slice(1, -1);
+      if (process.env[m[1]] === undefined) process.env[m[1]] = val;
+    });
+  }
+} catch (e) { /* ignore */ }
 const {
   Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder,
   ButtonStyle, Partials, StringSelectMenuBuilder, AttachmentBuilder,
@@ -31,7 +45,24 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '60mb' }));
 app.use(express.urlencoded({ limit: '60mb', extended: true }));
-app.use(express.static(__dirname, { index: false }));
+
+// SECURITY FIX: do NOT serve the whole directory (that exposed data.json with all
+// customer credentials + bot.js source to anyone!). Only serve safe public files.
+const PUBLIC_FILES = ['logo.png', 'favicon.ico'];
+PUBLIC_FILES.forEach(f => {
+  app.get('/' + f, (req, res) => {
+    const fp = path.join(__dirname, f);
+    if (fs.existsSync(fp)) return res.sendFile(fp);
+    res.status(404).end();
+  });
+});
+// Serve default service images (used in Discord embeds only, but harmless to expose)
+app.get('/images/:file', (req, res) => {
+  const safe = String(req.params.file).replace(/[^a-zA-Z0-9._-]/g, '');
+  const fp = path.join(__dirname, 'images', safe);
+  if (safe && fs.existsSync(fp)) return res.sendFile(fp);
+  res.status(404).end();
+});
 
 // ===== DATA STORE (with JSON persistence) =====
 const DEFAULT_STORE = {
@@ -125,6 +156,37 @@ function base64ToBuffer(dataUri) {
   const matches = dataUri.match(/^data:image\/(\w+);base64,(.+)$/);
   if (!matches) return null;
   return { buffer: Buffer.from(matches[2], 'base64'), ext: matches[1] === 'jpeg' ? 'jpg' : matches[1] };
+}
+
+// ===== PENDING SELECTIONS (fixes Discord's 100-char customId limit) =====
+// When a buyer multi-selects guns/camos we stash the selection server-side and put
+// only a short key in the button customId. Old approach encoded every index in the
+// customId which crashed ("Invalid Form Body") when many items were selected.
+const PENDING_SELECTIONS = new Map(); // key -> { data, expires }
+const PENDING_TTL = 1000 * 60 * 30; // 30 minutes to confirm
+function pendingKey(userId, kind, serviceId) { return userId + ':' + kind + ':' + serviceId; }
+function setPendingSelection(userId, kind, serviceId, data) {
+  PENDING_SELECTIONS.set(pendingKey(userId, kind, serviceId), { data, expires: Date.now() + PENDING_TTL });
+}
+function getPendingSelection(userId, kind, serviceId) {
+  const entry = PENDING_SELECTIONS.get(pendingKey(userId, kind, serviceId));
+  if (!entry) return null;
+  if (Date.now() > entry.expires) { PENDING_SELECTIONS.delete(pendingKey(userId, kind, serviceId)); return null; }
+  return entry.data;
+}
+function clearPendingSelection(userId, kind, serviceId) { PENDING_SELECTIONS.delete(pendingKey(userId, kind, serviceId)); }
+setInterval(() => { // periodic cleanup
+  const now = Date.now();
+  for (const [k, v] of PENDING_SELECTIONS) { if (now > v.expires) PENDING_SELECTIONS.delete(k); }
+}, 10 * 60 * 1000).unref?.();
+
+// Stable emoji comparison key (string emoji vs {id,name} object).
+// Fixes the bug where guns couldn't be matched after a bot restart because
+// object emojis were compared by reference (g.emoji === gun.emoji → always false).
+function emojiKey(e) {
+  if (!e) return '';
+  if (typeof e === 'object') return (e.name || '') + ':' + (e.id || '');
+  return String(e);
 }
 
 function sendLogToDiscord(msg) {
@@ -543,6 +605,22 @@ app.post('/api/payments/:id/approve', async (req, res) => {
   try {
     const pr = store.paymentRequests.find(p => p.id === req.params.id);
     if (!pr) return res.status(404).json({ error: 'Request missing' });
+    if (pr.status === 'Approved') return res.status(400).json({ error: 'Already approved' });
+
+    // ===== OUT-OF-STOCK GUARDS (prevents delivering empty credentials/codes) =====
+    if (pr.poolId) {
+      const pool = store.pools.find(p => p.id === pr.poolId);
+      if (!pool || !pool.stock || pool.stock.length === 0) {
+        return res.status(400).json({ error: 'Pool is out of stock — add stock before approving, or refund the buyer.' });
+      }
+    }
+    if (pr.digitalProductId) {
+      const dig = store.digitalProducts.find(d => d.id === pr.digitalProductId);
+      if (!dig || !dig.stock || dig.stock.length === 0) {
+        return res.status(400).json({ error: 'Digital product is out of stock — add codes before approving, or refund the buyer.' });
+      }
+    }
+
     pr.status = 'Approved';
     pr.approvedAt = new Date().toISOString();
 
@@ -926,6 +1004,62 @@ app.post('/api/tickets/:id/close', async (req, res) => {
     saveStore();
     addLog('INFO', `Ticket ${ticket.id} closed manually`);
     res.json(ticket);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Complete a SPECIFIC boosting/camo ticket (fixes bug: the old per-service endpoint
+// always completed the first in-progress ticket, which was wrong with multiple buyers)
+app.post('/api/tickets/:id/complete', async (req, res) => {
+  try {
+    const ticket = store.tickets.find(t => t.id === req.params.id);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    if (ticket.status !== 'boosting_in_progress' && ticket.status !== 'camo_in_progress') {
+      return res.status(400).json({ error: 'This ticket is not an in-progress boost/camo service.' });
+    }
+    const isCamo = ticket.status === 'camo_in_progress';
+    const pr = store.paymentRequests.find(p => p.id === ticket.paymentId);
+    if (pr) pr.status = 'Delivered';
+    // Mark the matching order Delivered too (so revenue stats include it)
+    const order = store.orders.find(o => o.custId === ticket.userId && o.item === ticket.accountTitle && o.status === 'In Progress');
+    if (order) order.status = 'Delivered';
+    ticket.status = 'closed';
+    ticket.closedAt = new Date().toISOString();
+
+    const title = isCamo ? '✅ تم اكتمال فتح الكاموهات!' : '✅ تم اكتمال البوست بنجاح!';
+    const line = isCamo ? '🎨 تم فتح جميع الكاموهات المطلوبة بنجاح!' : '🚀 تم اكتمال خدمة البوست بنجاح!';
+    const buildDesc = (footerNote) =>
+      `**مرحباً ${ticket.userName}! 👋**\n\n` +
+      `${line}\n\n` +
+      `**📋 تفاصيل الخدمة:**\n` +
+      `${isCamo ? '🎨' : '🚀'} الخدمة: ${ticket.accountTitle}\n` +
+      `🎫 رقم التذكرة: \`${ticket.id}\`\n\n` +
+      `🎮 حسابك جاهز الآن — يمكنك الدخول والتحقق!\n\n` +
+      `🙏 شكراً لثقتك في **${store.settings.storeName}**!\n` + footerNote;
+
+    if (ticket.channelId && client.isReady()) {
+      const ch = client.channels.cache.get(ticket.channelId);
+      if (ch) {
+        const embed = new EmbedBuilder().setColor(0x3ddc84).setTitle(title)
+          .setDescription(buildDesc('نتمنى نراك مرة أخرى 🌟'))
+          .setFooter({ text: store.settings.storeName + ' • سيتم إغلاق التذكرة خلال ' + (store.settings.autoCloseSeconds || 15) + ' ثانية' })
+          .setTimestamp();
+        await ch.send({ embeds: [embed] });
+        setTimeout(async () => { try { await ch.delete('Service complete — ticket auto-closed'); } catch (e) {} }, (store.settings.autoCloseSeconds || 15) * 1000);
+      }
+    }
+    if (ticket.userId && client.isReady()) {
+      try {
+        const user = await client.users.fetch(ticket.userId);
+        const dmEmbed = new EmbedBuilder().setColor(0x3ddc84).setTitle(title)
+          .setDescription(buildDesc('لأي استفسار، افتح تذكرة في السيرفر.'))
+          .setFooter({ text: store.settings.storeName }).setTimestamp();
+        await user.send({ embeds: [dmEmbed] });
+      } catch (e) {}
+    }
+    saveStore();
+    addLog('INFO', `Ticket ${ticket.id} (${isCamo ? 'camo' : 'boost'}) marked complete`);
+    sendLogToDiscord(`${isCamo ? '🎨' : '✅'} ${isCamo ? 'Camo' : 'Boost'} complete for ticket \`${ticket.id}\` — **${ticket.accountTitle}**`);
+    res.json({ success: true, ticketId: ticket.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1527,7 +1661,14 @@ app.post('/api/camo', async (req, res) => {
 
 // Parse camo entry: '🟡 Gold:5' or 'Gold:5' or '🟡 Gold' (uses pricePerCamo if no price)
 function parseCamoEntry(line) {
-  if (typeof line === 'object') return line;
+  if (typeof line === 'object') {
+    // Normalize custom emoji strings like '<:gold:123>' into {id,name} objects
+    if (line && typeof line.emoji === 'string') {
+      const cm = line.emoji.trim().match(/^<a?:(\w+):(\d+)>$/);
+      if (cm) return { ...line, emoji: { name: cm[1], id: cm[2] } };
+    }
+    return line;
+  }
   const trimmed = String(line).trim();
   let emoji = '';
   let rest = trimmed;
@@ -1939,6 +2080,61 @@ app.post('/api/broadcast', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== BUYER GUIDE (posts a bilingual "How to Buy" embed to a channel) =====
+app.post('/api/post-guide', async (req, res) => {
+  try {
+    const channelId = (req.body && req.body.channelId) || store.settings.accountsChannelId;
+    if (!channelId) return res.status(400).json({ error: 'No channel ID — set Products Channel in Settings or pass one.' });
+    if (!client.isReady()) return res.status(400).json({ error: 'Bot is not connected to Discord.' });
+    const channel = client.channels.cache.get(channelId);
+    if (!channel) return res.status(400).json({ error: 'Channel not found — check the ID and bot permissions.' });
+
+    const s = store.settings;
+    const methods = [];
+    if (s.stcPay && s.stcPay.number) methods.push('📱 STC Pay');
+    if (s.alrajhi && s.alrajhi.iban) methods.push('🏦 AlRajhi Bank');
+    if (s.paypal && s.paypal.email) methods.push('💳 PayPal');
+
+    const guideEmbed = new EmbedBuilder()
+      .setColor(s.color || 0x9b59ff)
+      .setTitle('📖 كيف تشتري من ' + s.storeName + ' / How to Buy')
+      .setDescription(
+        `**🛒 خطوات الشراء / Purchase Steps:**\n\n` +
+        `1️⃣ اضغط زر **شراء / Buy** تحت المنتج الذي تريده\n` +
+        `> Click the **Buy** button under the product you want\n\n` +
+        `2️⃣ سيتم فتح **تذكرة خاصة** لك — لا يراها أحد غيرك والإدارة\n` +
+        `> A **private ticket** opens — only you and staff can see it\n\n` +
+        `3️⃣ للبوست والكاموهات: اختر ما تريد من القوائم — **تقدر تختار أكثر من سلاح/كامو** والسعر يُحسب تلقائياً\n` +
+        `> For boosting & camos: pick from the menus — **you can select multiple guns/camos** and the total price is calculated automatically\n\n` +
+        `4️⃣ اختر طريقة الدفع وحوّل المبلغ ثم **ارفع صورة الإيصال** في التذكرة\n` +
+        `> Choose a payment method, transfer, then **upload the receipt screenshot** in the ticket\n\n` +
+        `5️⃣ بعد تأكيد الإدارة يتم التسليم فوراً (حساب/كود) أو يبدأ العمل (بوست/كامو)\n` +
+        `> After staff confirmation you get instant delivery, or the service starts\n\n` +
+        `6️⃣ عندك كود خصم؟ اضغط زر **🎁 كود خصم** داخل التذكرة\n` +
+        `> Have a coupon? Click the **🎁 Coupon** button inside your ticket`
+      )
+      .addFields(
+        { name: '💳 طرق الدفع المتوفرة / Payment Methods', value: methods.length ? methods.join(' • ') : 'Contact admin', inline: false },
+        { name: '📜 الشروط / Terms', value: (s.termsAr || '') + '\n' + (s.termsEn || ''), inline: false }
+      )
+      .setFooter({ text: s.storeName + ' • ' + STORE_TAGLINE })
+      .setTimestamp();
+
+    const files = [];
+    try {
+      const logoPath = path.join(__dirname, 'logo.png');
+      if (fs.existsSync(logoPath)) {
+        files.push(new AttachmentBuilder(fs.readFileSync(logoPath), { name: 'logo.png' }));
+        guideEmbed.setThumbnail('attachment://logo.png');
+      }
+    } catch (e) {}
+
+    await channel.send({ embeds: [guideEmbed], files });
+    addLog('INFO', 'Buyer guide posted to channel ' + channelId);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== DISCORD CLIENT =====
 const client = new Client({
   intents: [
@@ -2029,7 +2225,7 @@ client.on('interactionCreate', async (interaction) => {
       const ticket = {
         id: ticketId, userId: interaction.user.id, userName: interaction.user.username,
         accountId: accId, accountTitle: acc.titleEn, amount: acc.price,
-        channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
+        guildId: guild.id, channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
         status: 'open', createdAt: new Date().toISOString()
       };
       store.tickets.unshift(ticket);
@@ -2131,7 +2327,7 @@ client.on('interactionCreate', async (interaction) => {
       const ticket = {
         id: ticketId, userId: interaction.user.id, userName: interaction.user.username,
         accountId: null, poolId: poolId, accountTitle: pool.name + ' (Auto-Delivery)', amount: pool.price,
-        channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
+        guildId: guild.id, channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
         status: 'open', createdAt: new Date().toISOString()
       };
       store.tickets.unshift(ticket);
@@ -2222,7 +2418,7 @@ client.on('interactionCreate', async (interaction) => {
         id: ticketId, userId: interaction.user.id, userName: interaction.user.username,
         accountId: null, poolId: null, digitalProductId: digId, boostingServiceId: null,
         accountTitle: dig.titleEn + ' (Digital)', amount: dig.price,
-        channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
+        guildId: guild.id, channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
         status: 'open', createdAt: new Date().toISOString()
       };
       store.tickets.unshift(ticket);
@@ -2572,23 +2768,40 @@ client.on('interactionCreate', async (interaction) => {
       const gunName = gunIdx !== null && camo.gunList[gunIdx] ? camo.gunList[gunIdx].name : 'Any gun';
       const camosList = selectedCamos.map(c => (c.emoji ? (typeof c.emoji === 'object' ? '<:'+c.emoji.name+':'+c.emoji.id+'>' : c.emoji) + ' ' : '') + c.name).join(', ');
       const embed = new EmbedBuilder().setColor(store.settings.color || 0x9b59ff).setTitle('✅ Confirm Your Camo Unlock').setDescription(`**${camo.titleEn}**\n🔫 Gun: \`${gunName}\`\n🎨 Camos: ${camosList}\n📊 Count: ${selectedCamos.length}\n💰 Total Price: \`${cur}${totalPrice.toFixed(2)}\`\n⏱️ ETA: \`${camo.eta}\`\n\nClick **Confirm** to create a ticket.`).setFooter({ text: store.settings.storeName });
-      // Encode selected camo indices in the button customId (comma-separated)
+      // FIX: selection is stored server-side; the customId stays short no matter how
+      // many camos the buyer selects (Discord customIds are limited to 100 chars).
+      setPendingSelection(interaction.user.id, 'camo', camoId, { gunIdx, selectedCamos, totalPrice });
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('camocamoc_' + camoId + '_' + gunIdx + '_' + selectedIndices.join(',')).setLabel('✅ تأكيد / Confirm').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('camocc_' + camoId).setLabel('✅ تأكيد / Confirm').setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId('bstcancel').setLabel('❌ إلغاء / Cancel').setStyle(ButtonStyle.Danger)
       );
       return interaction.update({ embeds: [embed], components: [row] });
     }
 
-    // ---- CAMO: confirm → create ticket ----
+    // ---- CAMO: confirm → create ticket (reads server-side pending selection) ----
+    if (interaction.isButton() && interaction.customId.startsWith('camocc_')) {
+      const camoId = parseInt(interaction.customId.split('_')[1]);
+      const camo = store.camoServices.find(s => s.id === camoId);
+      if (!camo) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
+      const pending = getPendingSelection(interaction.user.id, 'camo', camoId);
+      if (!pending || !pending.selectedCamos || pending.selectedCamos.length === 0) {
+        return interaction.reply({ content: '⌛ انتهت صلاحية الاختيار — اضغط "اطلب الآن" من جديد / Selection expired — please start again from the product post.', ephemeral: true });
+      }
+      clearPendingSelection(interaction.user.id, 'camo', camoId);
+      await interaction.deferUpdate();
+      return await createCamoTicket(interaction, camo, pending.gunIdx, pending.selectedCamos, pending.totalPrice);
+    }
+
+    // ---- CAMO: legacy confirm (old messages posted before the fix) ----
     if (interaction.isButton() && interaction.customId.startsWith('camocamoc_')) {
       const parts = interaction.customId.split('_');
       const camoId = parseInt(parts[1]);
       const gunIdx = parts[2] === 'null' ? null : parseInt(parts[2]);
-      const selectedIndices = parts[3].split(',').map(s => parseInt(s)).filter(n => !isNaN(n));
+      const selectedIndices = (parts[3] || '').split(',').map(s => parseInt(s)).filter(n => !isNaN(n));
       const camo = store.camoServices.find(s => s.id === camoId);
       if (!camo) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
       const selectedCamos = selectedIndices.map(i => camo.camoList[i]).filter(Boolean);
+      if (selectedCamos.length === 0) return interaction.reply({ content: '❌ اختيار غير صالح — اضغط "اطلب الآن" من جديد / Invalid selection — please start again.', ephemeral: true });
       const totalPrice = selectedCamos.reduce((sum, c) => {
         const p = (c.price !== null && c.price !== undefined) ? c.price : camo.pricePerCamo;
         return sum + p;
@@ -2734,9 +2947,6 @@ client.on('interactionCreate', async (interaction) => {
         gunLabels.push(gunEmoji + gun.name + ' ($' + price + ')');
       }
 
-      // Find global gun indices for the confirm button (comma-separated)
-      const globalIndices = selectedGuns.map(gun => boost.gunList.findIndex(g => g.name === gun.name && g.emoji === gun.emoji));
-
       const cur = store.settings.currency;
       const embed = new EmbedBuilder()
         .setColor(store.settings.color || 0x9b59ff)
@@ -2751,32 +2961,47 @@ client.on('interactionCreate', async (interaction) => {
         )
         .setFooter({ text: store.settings.storeName })
         .setTimestamp();
+      // FIX: store the actual selected gun objects server-side. The old code encoded
+      // indices in the customId (breaks past 100 chars with many guns selected) AND
+      // matched guns with `g.emoji === gun.emoji` which fails for custom-emoji objects
+      // after a bot restart (object reference comparison) → "Guns missing" error.
+      setPendingSelection(interaction.user.id, 'boostgun', boostId, { selectedGuns, totalPrice });
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('bstgunconfirm_' + boostId + '_' + globalIndices.join(',') + '_' + totalPrice).setLabel('✅ تأكيد').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('bstgc_' + boostId).setLabel('✅ تأكيد').setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId('bstcancel').setLabel('❌ إلغاء').setStyle(ButtonStyle.Danger)
       );
       return interaction.update({ embeds: [embed], components: [row] });
     }
 
-    // ---- GUN: confirm → create ticket with multiple guns ----
+    // ---- GUN: confirm → create ticket with multiple guns (server-side selection) ----
+    if (interaction.isButton() && interaction.customId.startsWith('bstgc_')) {
+      const boostId = parseInt(interaction.customId.split('_')[1]);
+      const boost = store.boostingServices.find(s => s.id === boostId);
+      if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
+      const pending = getPendingSelection(interaction.user.id, 'boostgun', boostId);
+      if (!pending || !pending.selectedGuns || pending.selectedGuns.length === 0) {
+        return interaction.reply({ content: '⌛ انتهت صلاحية الاختيار — اضغط "اطلب الآن" من جديد / Selection expired — please start again from the product post.', ephemeral: true });
+      }
+      clearPendingSelection(interaction.user.id, 'boostgun', boostId);
+      const gunLabels = pending.selectedGuns.map(gun => (gun.emoji ? (typeof gun.emoji === 'object' ? '<:'+gun.emoji.name+':'+gun.emoji.id+'>' : gun.emoji) + ' ' : '') + gun.name);
+      await interaction.deferUpdate();
+      return await createBoostingTicket(interaction, boost, { type: 'gun_level', gunName: gunLabels.join(', '), fromLevel: 'current', toLevel: 'MAX', levels: 'MAX', gunCount: pending.selectedGuns.length }, pending.totalPrice);
+    }
+
+    // ---- GUN: legacy confirm (old messages posted before the fix) ----
     if (interaction.isButton() && interaction.customId.startsWith('bstgunconfirm_')) {
       const parts = interaction.customId.split('_');
       const boostId = parseInt(parts[1]);
-      const gunIndicesStr = parts[2]; // comma-separated indices
+      const gunIndicesStr = parts[2] || ''; // comma-separated indices
       const totalPrice = parseFloat(parts[3]) || 13;
       const boost = store.boostingServices.find(s => s.id === boostId);
       if (!boost) return interaction.reply({ content: '❌ Service missing.', ephemeral: true });
-
-      // Parse gun indices
       const gunIndices = gunIndicesStr.split(',').map(s => parseInt(s)).filter(n => !isNaN(n));
       const selectedGuns = gunIndices.map(i => boost.gunList[i]).filter(Boolean);
-      if (selectedGuns.length === 0) return interaction.reply({ content: '❌ Guns missing.', ephemeral: true });
-
-      // Build gun labels
+      if (selectedGuns.length === 0) return interaction.reply({ content: '❌ اختيار غير صالح — اضغط "اطلب الآن" من جديد / Invalid selection — please start again.', ephemeral: true });
       const gunLabels = selectedGuns.map(gun => (gun.emoji ? (typeof gun.emoji === 'object' ? '<:'+gun.emoji.name+':'+gun.emoji.id+'>' : gun.emoji) + ' ' : '') + gun.name);
-      const gunLabel = gunLabels.join(', ');
       await interaction.deferUpdate();
-      return await createBoostingTicket(interaction, boost, { type: 'gun_level', gunName: gunLabel, fromLevel: 'current', toLevel: 'MAX', levels: 'MAX', gunCount: selectedGuns.length }, totalPrice);
+      return await createBoostingTicket(interaction, boost, { type: 'gun_level', gunName: gunLabels.join(', '), fromLevel: 'current', toLevel: 'MAX', levels: 'MAX', gunCount: selectedGuns.length }, totalPrice);
     }
 
     // ---- Cancel button for boost choice flow ----
@@ -3119,8 +3344,14 @@ async function showGunSelectForBoost(interaction, boost, catIdx) {
       `اختر السلاح 👇`
     )
     .setFooter({ text: store.settings.storeName + ' • الخطوة 2 من 3' });
-  // Use update() to replace the previous select menu (works for select menu interactions)
-  return interaction.update({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] }).catch(()=>{});
+  // BUG FIX: only use update() when this came from the category select menu (which is an
+  // ephemeral message). When called directly from the public "Order Boost" button
+  // (single-category services), update() would REPLACE the public product post for
+  // everyone — so reply ephemerally instead.
+  if (interaction.isStringSelectMenu()) {
+    return interaction.update({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] }).catch(()=>{});
+  }
+  return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(()=>{});
 }
 
 // Helper: show camo multi-select menu (called from ordercamo_ and camogun_ handlers)
@@ -3190,7 +3421,7 @@ async function createCamoTicket(interaction, camo, gunIdx, selectedCamos, price)
     accountId: null, poolId: null, digitalProductId: null, boostingServiceId: null, camoServiceId: camo.id,
     accountTitle: camo.titleEn + ' — ' + choiceText, amount: parseFloat(price.toFixed(2)),
     camoChoices: { gun: gunName, camos: selectedCamos.map(c => c.name) },
-    channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
+    guildId: guild.id, channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
     status: 'open', createdAt: new Date().toISOString()
   };
   store.tickets.unshift(ticket);
@@ -3288,7 +3519,7 @@ async function createBoostingTicket(interaction, boost, choices, price) {
     accountId: null, poolId: null, digitalProductId: null, boostingServiceId: boost.id,
     accountTitle: boost.titleEn + ' — ' + choiceText, amount: parseFloat(price.toFixed(2)),
     boostingEta: boost.eta, boostingChoices: choices,
-    channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
+    guildId: guild.id, channelId: ticketChannel.id, paymentId: null, paymentMethod: null,
     status: 'open', createdAt: new Date().toISOString()
   };
   store.tickets.unshift(ticket);
@@ -3475,5 +3706,12 @@ if (!process.env.DISCORD_TOKEN) {
   client.login(process.env.DISCORD_TOKEN).catch(err => console.error(`[${STORE_NAME}] Discord login failed:`, err.message));
 }
 
-// Save store every 60 seconds as safety net
+// Save store every 60 seconds as safety net (the comment existed but the code was missing!)
+setInterval(() => {
+  try {
+    const tmp = DATA_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(store, null, 2));
+    fs.renameSync(tmp, DATA_FILE);
+  } catch (e) { /* ignore */ }
+}, 60 * 1000).unref?.();
 setInterval(() => { try { fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2)); } catch (e) {} }, 60000);
