@@ -609,7 +609,11 @@ async function api(endpoint, opts = {}) {
   });
   if (r.status === 401) { showLogin(); throw new Error('Unauthorized'); }
   const text = await r.text();
-  try { return JSON.parse(text); } catch { return text; }
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  // BUG FIX: previously 400/500 responses were returned as normal data, so the UI
+  // showed a success toast even when the server rejected the action. Now they throw.
+  if (!r.ok) throw new Error((data && data.error) || ('Request failed (' + r.status + ')'));
+  return data;
 }
 
 // ===== TOAST =====
@@ -761,11 +765,47 @@ function renderDashboard(c) {
       </div></div>`;
   }).join('') || '<p class="text-muted text-sm">No products yet</p>';
 
+  // ===== SETUP CHECKLIST — shows the store owner exactly what's still missing =====
+  const set = CACHE.settings || {};
+  const checks = [
+    { ok: !!s.botOnline, label: 'Discord bot connected', fix: 'Check DISCORD_TOKEN env var + bot intents' },
+    { ok: !!set.accountsChannelId, label: 'Products channel set', fix: 'Settings → Products Channel ID' },
+    { ok: !!set.ticketCategoryId, label: 'Ticket category set (required for buying!)', fix: 'Settings → Ticket Category ID' },
+    { ok: !!set.ownerId, label: 'Owner Discord ID set (order alert DMs)', fix: 'Settings → Owner Discord ID' },
+    { ok: !!((set.stcPay&&set.stcPay.number)||(set.alrajhi&&set.alrajhi.iban)||(set.paypal&&set.paypal.email)), label: 'At least one payment method', fix: 'Settings → Payment Methods' },
+    { ok: !!set.logChannelId, label: 'Log channel set (optional)', fix: 'Settings → Log Channel ID' }
+  ];
+  const doneCount = checks.filter(ch=>ch.ok).length;
+  const checklistHtml = doneCount === checks.length ? '' : `
+    <div class="panel-card" style="border-color:var(--yellow);margin-bottom:20px">
+      <h3><i class="fa-solid fa-list-check" style="color:var(--yellow)"></i> Setup Checklist — ${doneCount}/${checks.length} done</h3>
+      ${checks.map(ch => `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <i class="fa-solid ${ch.ok?'fa-circle-check':'fa-circle-xmark'}" style="color:var(${ch.ok?'--green':'--red'})"></i>
+        <span style="flex:1">${ch.label}</span>
+        ${ch.ok?'':`<span class="text-xs text-muted">${ch.fix}</span>`}
+      </div>`).join('')}
+    </div>`;
+
   c.innerHTML = `
     <div class="page active">
       <div class="page-header">
         <div><h2>Welcome back 👋</h2><p>Here's what's happening in your store today.</p></div>
         <button class="btn btn-primary" onclick="openAccountModal()"><i class="fa-solid fa-plus"></i> Add Product</button>
+      </div>
+
+      ${checklistHtml}
+
+      <div class="panel-card" style="margin-bottom:20px">
+        <h3><i class="fa-solid fa-bolt"></i> Quick Actions</h3>
+        <div class="flex gap-2" style="flex-wrap:wrap">
+          <button class="btn" onclick="openAccountModal()"><i class="fa-solid fa-plus"></i> Add Product</button>
+          <button class="btn" onclick="openBoostingModal()"><i class="fa-solid fa-rocket"></i> New Boost</button>
+          <button class="btn" onclick="openCamoModal()"><i class="fa-solid fa-palette"></i> New Camo</button>
+          <button class="btn" onclick="openDigitalModal()"><i class="fa-solid fa-ticket"></i> New Digital</button>
+          <button class="btn" onclick="openCouponModal()"><i class="fa-solid fa-tag"></i> New Coupon</button>
+          <button class="btn" onclick="postBuyerGuide()"><i class="fa-solid fa-book-open"></i> Post Buyer Guide to Discord</button>
+          <button class="btn" onclick="openBroadcastModal()"><i class="fa-solid fa-bullhorn"></i> Broadcast DM</button>
+        </div>
       </div>
 
       <div class="stat-grid">
@@ -1492,14 +1532,14 @@ function openBoostingModal(editId) {
               ${BO7_CATALOG.gunsByCategory.map(cat=>`<button type="button" class="btn btn-sm" onclick="loadBo7GunsToBoosting('${escapeAttr(cat.category)}')">${cat.emoji} ${escapeHtml(cat.category)}</button>`).join('')}
             </div>
             <textarea id="b_gunList" style="min-height:180px;font-family:'JetBrains Mono',monospace" placeholder="# Assault Rifles&#10;🔫 AK-27:13&#10;🔫 M15 MOD 0:13&#10;# SMGs&#10;💨 Dravec 45:13&#10;💨 Kogot-7:13">${escapeHtml(gunListText)}</textarea>
-            <p class="text-xs text-muted mt-2"><b>Format:</b> Lines starting with <code>#</code> are category names. Other lines are guns: <code>emoji GunName:price</code><br>
-            <b>Customer flow:</b> picks category → picks gun → enters levels → price = levels × price<br>
-            e.g. AK-27 1→100 = 99 × $13 = <b>$13</b> · Default price = $13/gun</p></div>
+            <p class="text-xs text-muted mt-2"><b>Format:</b> Lines starting with <code>#</code> are category names. Other lines are guns: <code>emoji GunName:price</code> — the price is a <b>flat price per gun</b> (level 1 → MAX).<br>
+            <b>Customer flow:</b> picks category → <b>multi-selects one or MANY guns</b> → total = sum of selected gun prices<br>
+            e.g. AK-27 ($13) + M15 ($13) = <b>$26</b> · Default price = $13/gun if omitted</p></div>
           <div class="form-field"><label>Max Gun Level</label><input id="b_maxGunLevel" type="number" value="${v('maxGunLevel',100)}" placeholder="100">
             <p class="text-xs text-muted mt-2">Max level a gun can reach (BO7 = 100).<br>Customer enters current level (1) → target level (100).</p>
             <div class="mt-3" style="background:var(--bg-input);padding:10px;border-radius:8px;border:1px solid var(--border)">
-              <p class="text-xs text-muted" style="margin-bottom:4px"><b>💡 Pricing example:</b></p>
-              <p class="text-xs mono" style="color:var(--green)">AK-27: 1 → 100<br>= 99 levels × $13<br>= <b>$13</b></p>
+              <p class="text-xs text-muted" style="margin-bottom:4px"><b>💡 Pricing example (multi-select):</b></p>
+              <p class="text-xs mono" style="color:var(--green)">AK-27 → MAX = $13<br>+ M15 MOD 0 → MAX = $13<br>Total = <b>$26</b></p>
             </div></div>
         </div>
       </div>
@@ -1623,22 +1663,62 @@ function renderCamo(c) {
         }).join('')}</div>`}
     </div>`;
 }
+// ===== DYNAMIC CAMO SLOTS (up to 25 — Discord select menu limit) =====
+const MAX_CAMO_SLOTS = 25;
+window._camoSlots = [];
+function renderCamoSlots() {
+  const box = document.getElementById('camoSlotsBox');
+  if (!box) return;
+  box.innerHTML = window._camoSlots.map((sl, i) => `
+    <div class="form-row-3" style="align-items:end">
+      <div class="form-field"><label>Camo ${i+1} — Emoji + Name</label>
+        <div class="flex gap-2">
+          <input id="cm_camo${i}_emoji" value="${escapeAttr(typeof sl.emoji==='object'&&sl.emoji?('<:'+sl.emoji.name+':'+sl.emoji.id+'>'):(sl.emoji||''))}" placeholder="🟡" style="flex:0 0 70px">
+          <input id="cm_camo${i}_name" value="${escapeAttr(sl.name||'')}" placeholder="e.g. Molten Gold" style="flex:1">
+        </div>
+      </div>
+      <div class="form-field"><label>Price ($)</label><input id="cm_camo${i}_price" type="number" step="0.01" value="${sl.price!==null&&sl.price!==undefined&&sl.price!==''?sl.price:''}" placeholder="default"></div>
+      <div class="form-field"><button type="button" class="btn btn-sm btn-danger" onclick="removeCamoSlot(${i})" style="margin-bottom:2px"><i class="fa-solid fa-trash"></i> Remove</button></div>
+    </div>`).join('');
+  const addBtn = document.getElementById('addCamoSlotBtn');
+  if (addBtn) addBtn.style.display = window._camoSlots.length >= MAX_CAMO_SLOTS ? 'none' : 'inline-flex';
+  const cnt = document.getElementById('camoSlotCount');
+  if (cnt) cnt.textContent = window._camoSlots.length + ' / ' + MAX_CAMO_SLOTS;
+}
+function syncCamoSlotsFromDom() {
+  window._camoSlots = window._camoSlots.map((sl, i) => ({
+    emoji: val('cm_camo'+i+'_emoji'),
+    name: val('cm_camo'+i+'_name'),
+    price: val('cm_camo'+i+'_price')
+  }));
+}
+function addCamoSlot(preset) {
+  syncCamoSlotsFromDom();
+  if (window._camoSlots.length >= MAX_CAMO_SLOTS) return toast('warn', 'Max ' + MAX_CAMO_SLOTS + ' camos (Discord menu limit)');
+  window._camoSlots.push(preset || { name:'', price:'', emoji:'' });
+  renderCamoSlots();
+}
+function removeCamoSlot(i) {
+  syncCamoSlotsFromDom();
+  window._camoSlots.splice(i, 1);
+  renderCamoSlots();
+}
+function loadCamoPreset(kind) {
+  const list = kind === 'mastery' ? BO7_CATALOG.bo7MasteryCamos : BO7_CATALOG.bo7BaseCamos;
+  window._camoSlots = list.slice(0, MAX_CAMO_SLOTS).map(c => ({ name: c.name, price: c.price, emoji: c.emoji }));
+  renderCamoSlots();
+  toast('success', 'Loaded ' + window._camoSlots.length + ' ' + (kind==='mastery'?'mastery':'base') + ' camos — edit freely');
+}
 function openCamoModal(editId) {
   const edit = editId ? CACHE.camo.find(s => s.id === editId) : null;
   window._camoImages = edit && edit.images ? [...edit.images] : [];
   const isEdit = !!edit;
   const v = (k, d='') => edit ? (edit[k] !== undefined && edit[k] !== null ? edit[k] : d) : d;
-  // Build 6 camo slots from existing camoList or empty
+  // Load existing camo list into dynamic slots (or start with 6 empty rows)
   const existingCamos = edit && edit.camoList ? edit.camoList : [];
-  const slots = [];
-  for (let i = 0; i < 6; i++) {
-    const c = existingCamos[i] || {};
-    slots.push({
-      name: c.name || '',
-      price: (c.price !== null && c.price !== undefined && c.price !== '') ? c.price : '',
-      emoji: c.emoji || ''
-    });
-  }
+  window._camoSlots = existingCamos.length
+    ? existingCamos.map(c => ({ name: c.name || '', price: (c.price !== null && c.price !== undefined) ? c.price : '', emoji: c.emoji || '' }))
+    : [{name:'',price:'',emoji:''},{name:'',price:'',emoji:''},{name:'',price:'',emoji:''},{name:'',price:'',emoji:''},{name:'',price:'',emoji:''},{name:'',price:'',emoji:''}];
   const gunListText = edit && edit.gunList && edit.gunList.length
     ? (edit.gunCategories && edit.gunCategories.length
         ? edit.gunCategories.map(cat => {
@@ -1648,12 +1728,6 @@ function openCamoModal(editId) {
           }).join('\n')
         : edit.gunList.map(g => (g.emoji ? (typeof g.emoji === 'object' ? `<:${g.emoji.name}:${g.emoji.id}>` : g.emoji) + ' ' : '') + g.name).join('\n'))
     : '';
-  // Build 6 slot fields HTML
-  const slotsHtml = slots.map((s, i) => `
-    <div class="form-row">
-      <div class="form-field"><label>Camo ${i+1} Name</label><input id="cm_camo${i}_name" value="${escapeAttr(s.name)}" placeholder="e.g. Molten Gold"></div>
-      <div class="form-field"><label>Camo ${i+1} Price ($)</label><input id="cm_camo${i}_price" type="number" step="0.01" value="${s.price}" placeholder="e.g. 12"></div>
-    </div>`).join('');
   showModal(`
     <div class="modal-header"><h3>${isEdit?'Edit':'New'} Camo Unlock Service</h3><button class="close" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
@@ -1668,9 +1742,14 @@ function openCamoModal(editId) {
         <div class="form-field"><label>ETA</label><input id="cm_eta" value="${escapeAttr(v('eta','24-72 hours'))}" placeholder="24-72 hours"></div>
       </div>
       <div class="panel-card" style="background:var(--bg-elev);border:1px solid var(--border)">
-        <h3 style="margin-bottom:12px"><i class="fa-solid fa-palette"></i> Camo Slots (fill what you want)</h3>
-        ${slotsHtml}
-        <p class="text-xs text-muted mt-2">Leave any slot empty if you don't need it. Customer picks from filled slots.</p>
+        <h3 style="margin-bottom:12px"><i class="fa-solid fa-palette"></i> Camo List <span class="text-xs text-muted" id="camoSlotCount"></span></h3>
+        <div class="flex gap-2 mb-3" style="flex-wrap:wrap">
+          <button type="button" class="btn btn-sm" onclick="loadCamoPreset('mastery')"><i class="fa-solid fa-gem"></i> Load BO7 Mastery Camos</button>
+          <button type="button" class="btn btn-sm" onclick="loadCamoPreset('base')"><i class="fa-solid fa-layer-group"></i> Load BO7 Base Camos</button>
+        </div>
+        <div id="camoSlotsBox"></div>
+        <button type="button" class="btn btn-sm mt-2" id="addCamoSlotBtn" onclick="addCamoSlot()"><i class="fa-solid fa-plus"></i> Add Camo</button>
+        <p class="text-xs text-muted mt-2">Buyers can multi-select any of these camos in Discord — the total price is calculated automatically. Empty rows are ignored. Max 25 (Discord menu limit).</p>
       </div>
       <div class="form-row">
         <div class="form-field"><label>Gun Names (optional, emoji + name, one per line)</label>
@@ -1689,6 +1768,7 @@ function openCamoModal(editId) {
     <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveCamo(${editId||0})"><i class="fa-solid fa-palette"></i> ${isEdit?'Update':'Create'}</button></div>
   `);
+  renderCamoSlots();
 }
 async function saveCamo(editId) {
   const file = document.getElementById('cm_image').files[0];
@@ -1696,19 +1776,18 @@ async function saveCamo(editId) {
   if (file) { newImage = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
   let images = window._camoImages || [];
   if (newImage) { images = [newImage, ...images.slice(0, 9)]; }
-  // Build camoList from 6 slots
+  // Build camoList from dynamic slots (name + optional emoji + optional price)
+  syncCamoSlotsFromDom();
   const camoList = [];
-  for (let i = 0; i < 6; i++) {
-    const name = val('cm_camo'+i+'_name');
-    const price = val('cm_camo'+i+'_price');
-    if (name) {
-      camoList.push({
-        name: name,
-        emoji: '',
-        price: price ? parseFloat(price) : null
-      });
-    }
-  }
+  window._camoSlots.forEach(sl => {
+    const name = (sl.name || '').trim();
+    if (!name) return;
+    camoList.push({
+      name: name,
+      emoji: (sl.emoji || '').trim(),
+      price: (sl.price !== '' && sl.price !== null && sl.price !== undefined) ? parseFloat(sl.price) : null
+    });
+  });
   const data = {
     titleEn: val('cm_titleEn'), titleAr: val('cm_titleAr'),
     game: val('cm_game'),
@@ -1805,23 +1884,44 @@ async function deleteBoostSlot(id) {
   try { await api('boost-slots/'+id, { method:'DELETE' }); toast('success', 'Deleted'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
 }
+// ===== DYNAMIC BOOSTING SLOTS (up to 10) =====
+const MAX_BOOST_SLOTS = 10;
+window._boostSlotList = [];
+function renderBoostSlotRows() {
+  const box = document.getElementById('boostSlotsBox');
+  if (!box) return;
+  box.innerHTML = window._boostSlotList.map((sl, i) => `
+    <div class="form-row-3" style="align-items:end">
+      <div class="form-field"><label>Slot ${i+1} Name</label><input id="bs_slot${i}_name" value="${escapeAttr(sl.name||'')}" placeholder="e.g. Win Boost"></div>
+      <div class="form-field"><label>Slot ${i+1} Price ($)</label><input id="bs_slot${i}_price" type="number" step="0.01" value="${sl.price!==''&&sl.price!==null&&sl.price!==undefined?sl.price:''}" placeholder="e.g. 15"></div>
+      <div class="form-field"><button type="button" class="btn btn-sm btn-danger" onclick="removeBoostSlotRow(${i})" style="margin-bottom:2px"><i class="fa-solid fa-trash"></i> Remove</button></div>
+    </div>`).join('');
+  const addBtn = document.getElementById('addBoostSlotBtn');
+  if (addBtn) addBtn.style.display = window._boostSlotList.length >= MAX_BOOST_SLOTS ? 'none' : 'inline-flex';
+}
+function syncBoostSlotRowsFromDom() {
+  window._boostSlotList = window._boostSlotList.map((sl, i) => ({ name: val('bs_slot'+i+'_name'), price: val('bs_slot'+i+'_price') }));
+}
+function addBoostSlotRow() {
+  syncBoostSlotRowsFromDom();
+  if (window._boostSlotList.length >= MAX_BOOST_SLOTS) return toast('warn', 'Max ' + MAX_BOOST_SLOTS + ' slots');
+  window._boostSlotList.push({ name:'', price:'' });
+  renderBoostSlotRows();
+}
+function removeBoostSlotRow(i) {
+  syncBoostSlotRowsFromDom();
+  window._boostSlotList.splice(i, 1);
+  renderBoostSlotRows();
+}
 function openBoostSlotModal(editId) {
   const edit = editId ? CACHE.boostSlots.find(s => s.id === editId) : null;
   window._boostSlotImages = edit && edit.images ? [...edit.images] : [];
   const isEdit = !!edit;
   const v = (k, d='') => edit ? (edit[k] !== undefined && edit[k] !== null ? edit[k] : d) : d;
-  // Build 5 slots from existing slots or empty
   const existingSlots = edit && edit.slots ? edit.slots : [];
-  const slots = [];
-  for (let i = 0; i < 5; i++) {
-    const sl = existingSlots[i] || {};
-    slots.push({ name: sl.name || '', price: (sl.price !== null && sl.price !== undefined && sl.price !== '') ? sl.price : '' });
-  }
-  const slotsHtml = slots.map((s, i) => `
-    <div class="form-row">
-      <div class="form-field"><label>Slot ${i+1} Name</label><input id="bs_slot${i}_name" value="${escapeAttr(s.name)}" placeholder="e.g. Win Boost"></div>
-      <div class="form-field"><label>Slot ${i+1} Price ($)</label><input id="bs_slot${i}_price" type="number" step="0.01" value="${s.price}" placeholder="e.g. 15"></div>
-    </div>`).join('');
+  window._boostSlotList = existingSlots.length
+    ? existingSlots.map(sl => ({ name: sl.name || '', price: (sl.price !== null && sl.price !== undefined) ? sl.price : '' }))
+    : [{name:'',price:''},{name:'',price:''},{name:'',price:''},{name:'',price:''},{name:'',price:''}];
   showModal(`
     <div class="modal-header"><h3>${isEdit?'Edit':'New'} Boosting Service</h3><button class="close" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
@@ -1835,9 +1935,10 @@ function openBoostSlotModal(editId) {
         <div class="form-field"><label>ETA</label><input id="bs_eta" value="${escapeAttr(v('eta','24-48 hours'))}" placeholder="24-48 hours"></div>
       </div>
       <div class="panel-card" style="background:var(--bg-elev);border:1px solid var(--border)">
-        <h3 style="margin-bottom:12px"><i class="fa-solid fa-bolt"></i> Boosting Slots (fill what you want)</h3>
-        ${slotsHtml}
-        <p class="text-xs text-muted mt-2">Leave any slot empty if you don't need it. Customer picks from filled slots.</p>
+        <h3 style="margin-bottom:12px"><i class="fa-solid fa-bolt"></i> Boosting Slots</h3>
+        <div id="boostSlotsBox"></div>
+        <button type="button" class="btn btn-sm mt-2" id="addBoostSlotBtn" onclick="addBoostSlotRow()"><i class="fa-solid fa-plus"></i> Add Slot</button>
+        <p class="text-xs text-muted mt-2">Empty rows are ignored. Customer picks from filled slots. Max ${MAX_BOOST_SLOTS}.</p>
       </div>
       <div class="form-row"><div class="form-field"><label>${isEdit?'New Cover Image (optional)':'Cover Image (optional)'}</label><input type="file" id="bs_image" accept="image/*"></div></div>
       <div class="form-row"><div class="form-field"><label>Description (EN)</label><textarea id="bs_descEn" placeholder="Fast and safe boosting service.">${escapeHtml(v('descriptionEn',''))}</textarea></div>
@@ -1846,6 +1947,7 @@ function openBoostSlotModal(editId) {
     <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveBoostSlot(${editId||0})"><i class="fa-solid fa-bolt"></i> ${isEdit?'Update':'Create'}</button></div>
   `);
+  renderBoostSlotRows();
 }
 async function saveBoostSlot(editId) {
   const file = document.getElementById('bs_image').files[0];
@@ -1853,15 +1955,13 @@ async function saveBoostSlot(editId) {
   if (file) { newImage = await new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); }); }
   let images = window._boostSlotImages || [];
   if (newImage) { images = [newImage, ...images.slice(0, 9)]; }
-  // Build slots from 5 inputs
+  // Build slots from dynamic rows
+  syncBoostSlotRowsFromDom();
   const slots = [];
-  for (let i = 0; i < 5; i++) {
-    const name = val('bs_slot'+i+'_name');
-    const price = val('bs_slot'+i+'_price');
-    if (name) {
-      slots.push({ name: name, price: price ? parseFloat(price) : 0 });
-    }
-  }
+  window._boostSlotList.forEach(sl => {
+    const name = (sl.name || '').trim();
+    if (name) slots.push({ name: name, price: sl.price ? parseFloat(sl.price) : 0 });
+  });
   const data = {
     titleEn: val('bs_titleEn'), titleAr: val('bs_titleAr'),
     game: val('bs_game'),
@@ -1956,7 +2056,9 @@ function renderOrders(c) {
   const cur = CACHE.settings.currency || '$';
   c.innerHTML = `
     <div class="page active">
-      <div class="page-header"><div><h2>Orders</h2><p>${orders.length} total orders</p></div></div>
+      <div class="page-header"><div><h2>Orders</h2><p>${orders.length} total orders</p></div>
+        <button class="btn" onclick="exportOrdersCsv()"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
+      </div>
       <div class="filter-bar">
         <input type="text" id="ordSearch" placeholder="🔍 Search order ID or customer..." oninput="renderOrdersTable()">
         <select id="ordStatusFilter" onchange="renderOrdersTable()">
@@ -1993,6 +2095,21 @@ function renderOrdersTable() {
         ${o.status==='Pending'?`<button class="btn btn-sm btn-success" onclick="deliverOrder('${o.id}')"><i class="fa-solid fa-check"></i> Deliver</button>`:''}
       </td>
     </tr>`).join('')}</tbody></table>`;
+}
+function exportOrdersCsv() {
+  const orders = CACHE.orders || [];
+  if (!orders.length) return toast('warn', 'No orders to export');
+  const esc = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const rows = [['Order ID','Customer','Discord ID','Item','Amount','Original Amount','Coupon','Method','Date','Status']];
+  orders.forEach(o => rows.push([o.id, o.cust||'', o.custId||'', o.item||'', o.amount||0, o.originalAmount||o.amount||0, o.couponCode||'', o.paymentMethod||'', o.date||'', o.status||'']));
+  const csv = '﻿' + rows.map(r => r.map(esc).join(',')).join('\n'); // BOM so Excel opens Arabic correctly
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'isiam-orders-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('success', 'Exported ' + orders.length + ' orders');
 }
 async function deliverOrder(id) {
   if (!confirm('Mark this order as delivered & send credentials?')) return;
@@ -2043,6 +2160,9 @@ function renderPaymentsList() {
             💰 ${cur}${(p.discountedAmount||p.amount).toFixed(2)}${p.couponCode?` <span style="color:var(--green)">(coupon: ${p.couponCode})</span>`:''}
           </div>
         </div>
+        ${p.proofUrl?`<a href="${p.proofUrl}" target="_blank" title="Open full receipt" style="flex:0 0 auto">
+          <img src="${p.proofUrl}" alt="receipt" style="height:84px;max-width:140px;object-fit:cover;border-radius:8px;border:1px solid var(--border-light)" onerror="this.style.display='none'">
+        </a>`:''}
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${p.proofUrl?`<button class="btn btn-sm" onclick="window.open('${p.proofUrl}','_blank')"><i class="fa-solid fa-image"></i> View Receipt</button>`:''}
           ${(p.status==='Waiting Review'||p.status==='Pending')?`
@@ -2110,9 +2230,9 @@ function renderTicketsList() {
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${t.channelId?`<button class="btn btn-sm" onclick="window.open('https://discord.com/channels/@me/${t.channelId}','_blank')"><i class="fa-brands fa-discord"></i> Open</button>`:''}
-          ${t.status==='boosting_in_progress'&&t.boostingServiceId?`<button class="btn btn-sm btn-success" onclick="completeBoosting(${t.boostingServiceId})"><i class="fa-solid fa-check"></i> Complete Boost</button>`:''}
-          ${t.status==='camo_in_progress'&&t.camoServiceId?`<button class="btn btn-sm btn-success" onclick="completeCamo(${t.camoServiceId})"><i class="fa-solid fa-check"></i> Complete Camo</button>`:''}
+          ${t.channelId?`<button class="btn btn-sm" onclick="window.open('https://discord.com/channels/${t.guildId||'@me'}/${t.channelId}','_blank')"><i class="fa-brands fa-discord"></i> Open</button>`:''}
+          ${t.status==='boosting_in_progress'?`<button class="btn btn-sm btn-success" onclick="completeTicket('${t.id}')"><i class="fa-solid fa-check"></i> Complete Boost</button>`:''}
+          ${t.status==='camo_in_progress'?`<button class="btn btn-sm btn-success" onclick="completeTicket('${t.id}')"><i class="fa-solid fa-check"></i> Complete Camo</button>`:''}
           ${t.status!=='closed'?`<button class="btn btn-sm btn-danger" onclick="closeTicket('${t.id}')"><i class="fa-solid fa-lock"></i> Close</button>`:''}
         </div>
       </div>
@@ -2123,6 +2243,21 @@ async function closeTicket(id) {
   if (!confirm('Close this ticket? Channel will be deleted.')) return;
   try { await api(`tickets/${id}/close`, { method:'POST' }); toast('success', 'Ticket closed'); refreshAll(true); }
   catch (e) { toast('error', e.message); }
+}
+// Complete THIS specific ticket (safe with multiple buyers on the same service)
+async function completeTicket(id) {
+  if (!confirm('Mark this service complete? The buyer gets a completion message + DM, and the ticket closes.')) return;
+  try { const r = await api(`tickets/${id}/complete`, { method:'POST' }); const err = r && r.error; if (err) return toast('error', err); toast('success', 'Service marked complete — ticket closing'); refreshAll(true); }
+  catch (e) { toast('error', e.message); }
+}
+// Post the bilingual "How to Buy" guide embed to Discord
+async function postBuyerGuide(channelId) {
+  if (!confirm('Post the "How to Buy" guide embed to your products channel?')) return;
+  try {
+    const r = await api('post-guide', { method:'POST', body: JSON.stringify({ channelId: channelId || val('s_guideCh') || undefined }) });
+    if (r && r.error) return toast('error', r.error);
+    toast('success', 'Buyer guide posted to Discord!');
+  } catch (e) { toast('error', e.message); }
 }
 
 // ===== CUSTOMERS =====
@@ -2196,7 +2331,7 @@ function renderSettings(c) {
         <div class="form-field"><label>Boosting Services Channel ID</label><input id="s_boostCh" value="${escapeAttr(s.boostingChannelId||'')}" placeholder="fallback to Products Channel"></div></div>
         <div class="form-row"><div class="form-field"><label>Camo Unlock Channel ID</label><input id="s_camoCh" value="${escapeAttr(s.camoChannelId||'')}" placeholder="fallback to Products Channel"></div>
         <div class="form-field"><label>BOOSTING Channel ID</label><input id="s_boostSlotCh" value="${escapeAttr(s.boostSlotChannelId||'')}" placeholder="fallback to Products Channel"></div></div>
-        <div class="form-field"><label>Log Channel ID</label><input id="s_logCh" value="${escapeAttr(s.logChannelId||'')}" placeholder="1234567890"></div></div>
+        <div class="form-field"><label>Log Channel ID</label><input id="s_logCh" value="${escapeAttr(s.logChannelId||'')}" placeholder="1234567890"></div>
         <div class="form-row"><div class="form-field"><label>Owner Discord ID</label><input id="s_owner" value="${escapeAttr(s.ownerId||'')}" placeholder="Your Discord ID">
           <p class="text-xs text-muted mt-2">Receives DM alerts for every new order + payment approval.</p></div>
         <div class="form-field"><label>Staff Role IDs (comma-separated)</label><input id="s_staff" value="${escapeAttr((s.staffRoleIds||[]).join(','))}" placeholder="123,456,789"></div></div>
@@ -2230,6 +2365,14 @@ function renderSettings(c) {
         <div class="form-field mb-3"><label>Welcome Message (English)</label><textarea id="s_welcomeEn">${escapeHtml(s.welcomeEn||'')}</textarea></div>
         <div class="form-row"><div class="form-field"><label>Terms (Arabic)</label><textarea id="s_termsAr" style="min-height:120px">${escapeHtml(s.termsAr||'')}</textarea></div>
         <div class="form-field"><label>Terms (English)</label><textarea id="s_termsEn" style="min-height:120px">${escapeHtml(s.termsEn||'')}</textarea></div></div>
+      </div>
+      <div class="panel-card">
+        <h3><i class="fa-solid fa-book-open"></i> Buyer Guide</h3>
+        <p class="text-sm text-muted mb-3">Posts a beautiful bilingual "How to Buy" embed (steps, payment methods, terms) so new buyers know exactly what to do. Repost anytime after you change terms or payment methods.</p>
+        <div class="form-row" style="align-items:end">
+          <div class="form-field"><label>Channel ID (optional — default: Products Channel)</label><input id="s_guideCh" placeholder="1234567890"></div>
+          <div class="form-field"><button class="btn btn-primary" onclick="postBuyerGuide()"><i class="fa-solid fa-paper-plane"></i> Post Buyer Guide</button></div>
+        </div>
       </div>
       <div class="panel-card">
         <h3><i class="fa-solid fa-database"></i> Backup & Restore</h3>
